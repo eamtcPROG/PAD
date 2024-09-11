@@ -29,24 +29,29 @@ An example of similar a product is Ticketmaster (https://www.ticketmaster.com/),
 
 ## Design Data Management:
 
-- User service
-  `
-  POST /user/register - Register a new user.
-  POST /user/login - Login.
-  GET /user/{id} - Get user.
-  GET /user - Get user list.
-  POST /event - Create a new event.
-  GET /event - List all events
-  GET /event/{id} - Get event by id.
+### User service
 
-User
+ - `POST /user/register` - Register a new user.
+- `POST /user/login` - Login.
+- `GET /user/{id}` - Get user details by ID.
+- `GET /user` - Get a list of all users.
+- `POST /event` - Create a new event.
+- `GET /event` - List all events.
+- `GET /event/{id}` - Get event details by ID.
+
+#### User
+
+```json
 {
 "id": "string",
 "email": "string",
 "password": "string",
 }
+```
 
-Event
+#### Event
+
+```json
 {
 "id": "string",
 "name": "string",
@@ -61,17 +66,19 @@ Event
 "available_seats": "number",
 "total_seats": "number"
 }
-`
+```
 
-- Ticket
-  `
-  POST /order - Place a new order.
-  GET /order/{id} - Retrieve order details.
-  POST /payment - Process a payment.
-  GET /payment/{id} - Get payment status.
-  POST /notification - Send a notification.
+### Ticket Order Service
 
-Order
+ - `POST /order` - Place a new order.
+ - `GET /order/{id}` - Retrieve order details.
+ - `POST /payment` - Process a payment.
+ - `GET /payment/{id}` - Get payment status.
+ - `POST /notification` - Send a notification.
+
+#### Order
+
+```json
 {
 "id": "string",
 "user_id": "string",
@@ -84,8 +91,11 @@ Order
 "status": "string"
 }
 }
+```
 
-Payment
+#### Payment
+
+```json
 {
 "id": "string",
 "order_id": "string",
@@ -93,14 +103,16 @@ Payment
 "payment_method": "string",
 "payment_status": "string",
 }
+```
 
-Notification
+### Notification
+
+```json
 {
 "user_id": "string",
 "message": "string",
 }
-
-`
+```
 
 ## Deployment and Scaling:
 
