@@ -10,6 +10,7 @@ People prefer purchasing tickets online for avoiding long queues and immediate a
     
 An example of similar a product is Ticketmaster (https://www.ticketmaster.com/), it handles ticket sales for major events and uses distributed systems to manage the high traffic volume during popular event releases and prevent system overloads. They experienced site crashes when Taylor Swift’s tickets went on sale. To prevent this, they rely on distributed cloud infrastructure to scale up resources automatically.
 ## Define Service Boundaries:
+![scheme](images/service_boundaries.png)
 
 ## Technology Stack and Communication Patterns:
 
