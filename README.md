@@ -13,7 +13,12 @@ An example of similar a product is Ticketmaster (https://www.ticketmaster.com/),
 ![scheme](images/service_boundaries.png)
 
 ## Technology Stack and Communication Patterns:
-
+- User Service
+    - C# - RESTful APIs, ASP.NET Core
+    - PostgresSQL
+- Ticket Order Service
+    - NodeJS - RESTful APIs, Express
+    - MongoDB
 ## Design Data Management:
 
 ## Deployment and Scaling:
