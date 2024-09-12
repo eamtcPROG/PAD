@@ -21,11 +21,13 @@ An example of similar a product is Ticketmaster (https://www.ticketmaster.com/),
 ## Technology Stack and Communication Patterns:
 
 - User Service
-  - C# - RESTful APIs, ASP.NET Core
+  - NodeJS - RESTful APIs, Express
   - PostgresSQL
 - Ticket Order Service
   - NodeJS - RESTful APIs, Express
   - MongoDB
+- APIGateway
+    - C# - RESTful APIs, ASP.NET Core
 
 ## Design Data Management:
 
@@ -38,6 +40,10 @@ An example of similar a product is Ticketmaster (https://www.ticketmaster.com/),
 - `POST /event` - Create a new event.
 - `GET /event` - List all events.
 - `GET /event/{id}` - Get event details by ID.
+
+- `GET /notification` - this will establish the connection with UserService, when the payment when the payment is is pending it will notify the user
+
+
 
 #### User
 
@@ -74,7 +80,6 @@ An example of similar a product is Ticketmaster (https://www.ticketmaster.com/),
  - `GET /order/{id}` - Retrieve order details.
  - `POST /payment` - Process a payment.
  - `GET /payment/{id}` - Get payment status.
- - `POST /notification` - Send a notification.
 
 #### Order
 
@@ -113,7 +118,8 @@ An example of similar a product is Ticketmaster (https://www.ticketmaster.com/),
 "message": "string",
 }
 ```
+gRPC for communication between services
 
 ## Deployment and Scaling:
 
-Docker will be used to containerize and deploy each microservice independently, for scaling, isolated environments, and to simplified deployment across different platforms.
+Docker Compose will be used to containerize and deploy each microservice independently, for scaling, isolated environments, and to simplified deployment across different platforms.
