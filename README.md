@@ -42,6 +42,7 @@ An example of similar a product is Ticketmaster (https://www.ticketmaster.com/),
 - `GET /event/{id}` - Get event details by ID.
 
 - `GET /notification` - this will establish the connection with UserService, when the payment when the payment is is pending it will notify the user
+- `Post /subscribe/event` - web socket, the user will subscribe to the event, when event date is coming close the users subscribed to event will be notify
 
 
 
