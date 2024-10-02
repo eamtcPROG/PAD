@@ -4,7 +4,9 @@ services:
     ports:
       - '4000:4000'
     depends_on:
-      - user
+      - mongo
+    environment:
+      MONGO_URI: mongodb://root:password@mongo:27017/ticketorderdb?authSource=admin
     networks:
       - app-network
 
@@ -14,6 +16,22 @@ services:
       - '4001:4001'
     networks:
       - app-network
+
+  mongo:
+    image: mongo:latest
+    container_name: mongo
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    networks:
+      - app-network
+
+volumes:
+  mongo-data:
 
 networks:
   app-network:
