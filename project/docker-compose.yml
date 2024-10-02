@@ -1,0 +1,20 @@
+services:
+  ticketorder:
+    build: ./services/ticketorder
+    ports:
+      - '4000:4000'
+    depends_on:
+      - user
+    networks:
+      - app-network
+
+  user:
+    build: ./services/user
+    ports:
+      - '4001:4001'
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
