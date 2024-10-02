@@ -14,6 +14,10 @@ services:
     build: ./services/user
     ports:
       - '4001:4001'
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgres://postgres:password@postgres:5432/userdb
     networks:
       - app-network
 
@@ -29,9 +33,24 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: password
     networks:
       - app-network
+  
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: userdb
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - app-network
 
 volumes:
   mongo-data:
+  postgres-data:
 
 networks:
   app-network:

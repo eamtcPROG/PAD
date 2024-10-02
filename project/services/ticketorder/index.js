@@ -22,7 +22,7 @@ mongoose
 
 // Common code for all services
 const MAX_CONCURRENT_TASKS = 10;
-const TASK_TIMEOUT = 10000;
+const TASK_TIMEOUT = 5000;
 
 let currentTaskCount = 0;
 
