@@ -1,0 +1,17 @@
+# Ignore node_modules and other unnecessary files
+**/node_modules
+**/bin
+**/obj
+**/*.user
+**/*.rsuser
+**/*.suo
+**/*.csproj.user
+**/*.csproj.nuget.dgspec.json
+**/*.csproj.nuget.g.targets
+**/*.csproj.nuget.g.props
+.vscode/
+.idea/
+.env
+yarn-error.log
+npm-debug.log
+logs/

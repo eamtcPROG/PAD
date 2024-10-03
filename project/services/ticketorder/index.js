@@ -17,7 +17,7 @@ mongoose
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => {
     console.error("MongoDB connection error:", err);
-    process.exit(1); // Exit the process if MongoDB connection fails
+    process.exit(1); 
   });
 
 // Common code for all services
@@ -85,6 +85,65 @@ app.get("/order", taskManagerMiddleware, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
+app.get("/order/:id", taskManagerMiddleware, async (req, res) => {
+  const { id } = req.params;  
+
+  try {
+    const order = await executeTaskWithTimeout(() => Order.findById(id), TASK_TIMEOUT); 
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });  
+    }
+
+    res.json(order); 
+  } catch (err) {
+    res.status(500).json({ message: err.message });  
+  }
+});
+
+app.post("/payment", taskManagerMiddleware, async (req, res) => {
+  const paymentData = req.body;
+
+  try {
+    
+    if (!paymentData.order_id || !paymentData.amount || !paymentData.payment_method) {
+      return res.status(400).json({ message: "Missing required fields." });
+    }
+
+
+    const newPayment = new Payment(paymentData);
+    await executeTaskWithTimeout(() => newPayment.save(), TASK_TIMEOUT);
+
+    
+    await executeTaskWithTimeout(() => {
+      return Order.findByIdAndUpdate(paymentData.order_id, { order_status: 'paid' });
+    }, TASK_TIMEOUT);
+
+    
+    res.status(201).json(newPayment);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+
+app.get("/payment/:id", taskManagerMiddleware, async (req, res) => {
+  const { id } = req.params;  
+
+  try {
+    const payment = await executeTaskWithTimeout(() => Payment.findById(id), TASK_TIMEOUT); 
+
+    if (!payment) {
+      return res.status(404).json({ message: "Payment not found" });  
+    }
+
+    res.json(payment); 
+  } catch (err) {
+    res.status(500).json({ message: err.message }); 
+  }
+});
+
 
 app.listen(4000, () => {
   console.log("Listening on 4000");

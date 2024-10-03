@@ -1,6 +1,7 @@
 services:
   ticketorder:
     build: ./services/ticketorder
+    container_name: ticketorder
     ports:
       - '4000:4000'
     depends_on:
@@ -12,6 +13,7 @@ services:
 
   user:
     build: ./services/user
+    container_name: user
     ports:
       - '4001:4001'
     depends_on:
@@ -47,6 +49,18 @@ services:
       - postgres-data:/var/lib/postgresql/data
     networks:
       - app-network
+
+  gateway:
+    build: ./services/gateway
+    ports:
+      - "5000:8080" 
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development  
+    networks:
+      - app-network
+    depends_on:
+      - user
+      - ticketorder
 
 volumes:
   mongo-data:
