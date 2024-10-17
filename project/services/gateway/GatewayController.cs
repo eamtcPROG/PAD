@@ -14,9 +14,10 @@ namespace Gateway.Controllers
         public GatewayController(IHttpClientFactory httpClientFactory, IConfiguration configuration)
         {
             _httpClientFactory = httpClientFactory;
-            _serviceDiscoveryUrl = configuration["ServiceDiscovery:Url"] 
+            _serviceDiscoveryUrl = configuration["ServiceDiscovery:Url"]
                                     ?? throw new ArgumentNullException("ServiceDiscovery:Url");
         }
+        
 
         [HttpGet, HttpPost, HttpPut, HttpDelete, HttpPatch]
         public async Task<IActionResult> HandleRequest(string serviceName, string catchAll)
