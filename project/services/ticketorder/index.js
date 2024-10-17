@@ -1,9 +1,8 @@
-
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const axios = require("axios");
-const { Order, Payment, Notification } = require("./models");
+const { Order, Payment } = require("./models");
 const redis = require("redis");
 
 const app = express();
@@ -37,25 +36,30 @@ const TASK_TIMEOUT = 5000;
 
 let currentTaskCount = 0;
 
-const executeTaskWithTimeout = (taskFn, timeout, res) => {
-  return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
-      res.set("Connection", "close");
-      reject({ status: 408, message: "Request Timeout" });
+// Timeout Middleware
+const timeoutMiddleware = (timeout) => {
+  return (req, res, next) => {
+    // Set a timer to trigger the timeout
+    const timer = setTimeout(() => {
+      if (!res.headersSent) {
+        res.status(408).json({ message: "Request Timeout" });
+      }
     }, timeout);
 
-    taskFn()
-      .then((result) => {
-        clearTimeout(timeoutId);
-        resolve(result);
-      })
-      .catch((err) => {
-        clearTimeout(timeoutId);
-        reject(err);
-      });
-  });
-};
+    // Clear the timer when the response is finished
+    res.on('finish', () => {
+      clearTimeout(timer);
+    });
 
+    // Clear the timer if the connection is closed
+    res.on('close', () => {
+      clearTimeout(timer);
+    });
+
+    next();
+  };
+};
+// Task Manager Middleware
 const taskManagerMiddleware = (req, res, next) => {
   if (currentTaskCount >= MAX_CONCURRENT_TASKS) {
     return res
@@ -69,66 +73,57 @@ const taskManagerMiddleware = (req, res, next) => {
   next();
 };
 
+// Apply Middlewares
+app.use(taskManagerMiddleware);
+app.use(timeoutMiddleware(TASK_TIMEOUT));
+
+// Status Endpoint
 app.get("/status", (req, res) => {
   res.json({ status: "Ticket Order service is up and running!" });
 });
 
 // Add Order
-app.post("/order", taskManagerMiddleware, async (req, res) => {
+app.post("/order", async (req, res, next) => {
   const orderData = req.body;
   try {
     const newOrder = new Order(orderData);
-    await executeTaskWithTimeout(() => newOrder.save(), TASK_TIMEOUT, res);
+    await newOrder.save();
 
     // Invalidate the cache
     await redisClient.del("orders"); // Remove cached list of orders
     await redisClient.setEx(
       `order:${newOrder._id}`,
       3600,
-      JSON.stringify(newOrder)
+      JSON.stringify(newOrder.toObject()) // Convert to plain object
     ); // Cache the new order
 
     res.status(201).json(newOrder);
   } catch (err) {
-    if (err.status === 408) {
-      return res
-        .status(408)
-        .json({ message: "Request Timeout", details: err.message });
-    }
-    res.status(500).json({ message: err.message });
+    next(err); // Correct variable name
   }
 });
 
 // Get All Orders
-app.get("/order", taskManagerMiddleware, async (req, res) => {
+app.get("/order", async (req, res, next) => {
   try {
-    // setTimeout(async ()=>{
+    // await new Promise((resolve) => setTimeout(resolve, 6000));
     const cachedOrders = await redisClient.get("orders");
 
     if (cachedOrders) {
       return res.json(JSON.parse(cachedOrders));
     } else {
-      const orders = await executeTaskWithTimeout(
-        () => Order.find(),
-        TASK_TIMEOUT,
-        res
-      );
-      await redisClient.setEx("orders", 3600, JSON.stringify(orders));
+      const orders = await Order.find().lean(); // Await and use lean()
+
+      await redisClient.setEx("orders", 3600, JSON.stringify(orders)); // Now safe to stringify
       res.json(orders);
     }
-    // }},2000)
   } catch (err) {
-    if (err.status === 408) {
-      return res
-        .status(408)
-        .json({ message: "Request Timeout", details: err.message });
-    }
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 });
 
 // Get Order by ID
-app.get("/order/:id", taskManagerMiddleware, async (req, res) => {
+app.get("/order/:id", async (req, res, next) => {
   const { id } = req.params;
 
   try {
@@ -137,76 +132,54 @@ app.get("/order/:id", taskManagerMiddleware, async (req, res) => {
     if (cachedOrder) {
       return res.json(JSON.parse(cachedOrder));
     } else {
-      const order = await executeTaskWithTimeout(
-        () => Order.findById(id),
-        TASK_TIMEOUT,
-        res
-      );
+      const order = await Order.findById(id).lean(); // Use lean()
+
       if (!order) {
         return res.status(404).json({ message: "Order not found" });
       }
-      await redisClient.setEx(`order:${id}`, 3600, JSON.stringify(order));
+      await redisClient.setEx(`order:${id}`, 3600, JSON.stringify(order)); // Safe to stringify
       res.json(order);
     }
   } catch (err) {
-    if (err.status === 408) {
-      return res
-        .status(408)
-        .json({ message: "Request Timeout", details: err.message });
-    }
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 });
 
 // Create Order with User
-app.post(
-  "/order/create-with-user",
-  taskManagerMiddleware,
-  async (req, res) => {
-    const { user_id, orderData } = req.body;
+app.post("/order/create-with-user", async (req, res, next) => {
+  const { user_id, orderData } = req.body;
 
-    try {
-      const response = await executeTaskWithTimeout(
-        () => axios.get(`http://user:4001/user/${user_id}`),
-        TASK_TIMEOUT,
-        res
-      );
+  try {
+    const response = await axios.get(`http://user:4001/user/${user_id}`); // Await the request
+    const user = response.data;
 
-      const user = response.data;
-
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const newOrder = new Order({ ...orderData, user_id });
-      await executeTaskWithTimeout(() => newOrder.save(), TASK_TIMEOUT, res);
-
-      // Invalidate the cache
-      await redisClient.del("orders");
-      await redisClient.setEx(
-        `order:${newOrder._id}`,
-        3600,
-        JSON.stringify(newOrder)
-      );
-
-      res.status(201).json({
-        message: "Order created with user",
-        order: newOrder,
-        user,
-      });
-    } catch (err) {
-      if (err.status === 408) {
-        return res
-          .status(408)
-          .json({ message: "Request Timeout", details: err.message });
-      }
-      res.status(500).json({ message: err.message });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
     }
+
+    const newOrder = new Order({ ...orderData, user_id });
+    await newOrder.save(); // Await the save operation
+
+    // Invalidate the cache
+    await redisClient.del("orders");
+    await redisClient.setEx(
+      `order:${newOrder._id}`,
+      3600,
+      JSON.stringify(newOrder.toObject()) // Convert to plain object
+    );
+
+    res.status(201).json({
+      message: "Order created with user",
+      order: newOrder,
+      user,
+    });
+  } catch (err) {
+    next(err);
   }
-);
+});
 
 // Payment Endpoints
-app.post("/payment", taskManagerMiddleware, async (req, res) => {
+app.post("/payment", async (req, res, next) => {
   const paymentData = req.body;
 
   try {
@@ -219,38 +192,23 @@ app.post("/payment", taskManagerMiddleware, async (req, res) => {
     }
 
     const newPayment = new Payment(paymentData);
-    await executeTaskWithTimeout(
-      () => newPayment.save(),
-      TASK_TIMEOUT,
-      res
-    );
+    await newPayment.save();
 
-    await executeTaskWithTimeout(() => {
-      return Order.findByIdAndUpdate(paymentData.order_id, {
-        order_status: "paid",
-      });
-    }, TASK_TIMEOUT, res);
+    await Order.findByIdAndUpdate(paymentData.order_id, {
+      order_status: "paid",
+    });
 
     res.status(201).json(newPayment);
   } catch (err) {
-    if (err.status === 408) {
-      return res
-        .status(408)
-        .json({ message: "Request Timeout", details: err.message });
-    }
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 });
 
-app.get("/payment/:id", taskManagerMiddleware, async (req, res) => {
+app.get("/payment/:id", async (req, res, next) => {
   const { id } = req.params;
 
   try {
-    const payment = await executeTaskWithTimeout(
-      () => Payment.findById(id),
-      TASK_TIMEOUT,
-      res
-    );
+    const payment = await Payment.findById(id).lean(); // Use lean()
 
     if (!payment) {
       return res.status(404).json({ message: "Payment not found" });
@@ -258,12 +216,15 @@ app.get("/payment/:id", taskManagerMiddleware, async (req, res) => {
 
     res.json(payment);
   } catch (err) {
-    if (err.status === 408) {
-      return res
-        .status(408)
-        .json({ message: "Request Timeout", details: err.message });
-    }
-    res.status(500).json({ message: err.message });
+    next(err);
+  }
+});
+
+// Error Handling Middleware (Should be last)
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 

@@ -1,5 +1,4 @@
 const express = require("express");
-
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const axios = require("axios");
@@ -7,6 +6,15 @@ const sequelize = require("./config/database");
 const User = require("./models/user");
 const Event = require("./models/event");
 const redis = require("redis");
+
+// Initialize Express App
+const app = express();
+
+// Apply Global Middlewares
+app.use(bodyParser.json());
+app.use(cors());
+
+// Redis Client Initialization
 const redisClient = redis.createClient({
   url: "redis://redis:6379",
 });
@@ -23,14 +31,12 @@ redisClient.connect().catch((err) => {
   console.error("Error connecting to Redis:", err);
 });
 
+// Handle Redis Client Shutdown Gracefully
 process.on("SIGINT", () => {
   redisClient.quit();
 });
 
-const app = express();
-app.use(bodyParser.json());
-app.use(cors());
-
+// Synchronize Sequelize Models with PostgreSQL
 sequelize
   .sync({ alter: true })
   .then(() => {
@@ -40,67 +46,89 @@ sequelize
     console.error("Unable to connect to the database:", err);
   });
 
-// Common code for all services
+// Configuration Constants
 const MAX_CONCURRENT_TASKS = 10;
-const TASK_TIMEOUT = 5000;
+const TASK_TIMEOUT = 5000; // 5 seconds
 
 let currentTaskCount = 0;
 
-const executeTaskWithTimeout = (taskFn, timeout, res) => {
-  return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
-      res.set("Connection", "close");
-
-      reject({ status: 408, message: "Request Timeout" });
-    }, timeout);
-
-    taskFn()
-      .then((result) => {
-        clearTimeout(timeoutId);
-        resolve(result);
-      })
-      .catch((err) => {
-        clearTimeout(timeoutId);
-        reject(err);
-      });
-  });
-};
-
+// Task Manager Middleware
 const taskManagerMiddleware = (req, res, next) => {
   if (currentTaskCount >= MAX_CONCURRENT_TASKS) {
     return res
       .status(503)
       .json({ message: "Server too busy. Try again later." });
   }
+
   currentTaskCount++;
+
+  // Decrement task count when response finishes or connection closes
   res.on("finish", () => {
     currentTaskCount--;
   });
+
+  res.on("close", () => {
+    currentTaskCount--;
+  });
+
   next();
 };
-//
 
+// Timeout Middleware
+const timeoutMiddleware = (timeout) => {
+  return (req, res, next) => {
+    // Set a timer to trigger the timeout
+    const timer = setTimeout(() => {
+      if (!res.headersSent) {
+        console.log(`Request timed out: ${req.method} ${req.originalUrl}`);
+        res.status(408).json({ message: "Request Timeout" });
+      }
+    }, timeout);
+
+    // Clear the timer when the response is finished
+    res.on("finish", () => {
+      clearTimeout(timer);
+    });
+
+    // Clear the timer if the connection is closed
+    res.on("close", () => {
+      clearTimeout(timer);
+    });
+
+    next();
+  };
+};
+
+// Apply Global Middlewares
+app.use(taskManagerMiddleware);
+app.use(timeoutMiddleware(TASK_TIMEOUT));
+
+// Status Endpoint
 app.get("/status", (req, res) => {
   res.json({ status: "User service is up and running!" });
 });
 
-app.post("/user", taskManagerMiddleware, async (req, res) => {
+// Create a New User
+app.post("/user", async (req, res, next) => {
   try {
-    const user = await executeTaskWithTimeout(
-      () => User.create(req.body),
-      TASK_TIMEOUT,
-      res
-    );
-    res.status(201).json(user);
+    const user = await User.create(req.body);
+
+    // Invalidate and Update Redis Cache
+    await redisClient.del("users"); // Remove cached list of users
+    await redisClient.setEx(
+      `user:${user.id}`,
+      3600,
+      JSON.stringify({ id: user.id, email: user.email }) // Store only necessary fields
+    ); // Cache the new user
+
+    res.status(201).json({ id: user.id, email: user.email });
   } catch (err) {
-    if (err.status === 408) {
-      return res.status(408).json({ message: err.message });
-    }
-    res.status(500).json({ message: err.message });
+    next(err); // Pass errors to the error-handling middleware
   }
 });
 
-app.post("/user/register", taskManagerMiddleware, async (req, res) => {
+// Register a New User
+app.post("/user/register", async (req, res, next) => {
   const { email, password } = req.body;
 
   try {
@@ -110,32 +138,33 @@ app.post("/user/register", taskManagerMiddleware, async (req, res) => {
         .json({ message: "Email and password are required." });
     }
 
-    const existingUser = await executeTaskWithTimeout(
-      () => User.findOne({ where: { email } }),
-      TASK_TIMEOUT,
-      res
-    );
+    // Check if User Already Exists
+    const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       return res
         .status(400)
         .json({ message: "User with this email already exists." });
     }
 
-    const newUser = await executeTaskWithTimeout(
-      () => User.create({ email, password }),
-      TASK_TIMEOUT,
-      res
+    // Create New User
+    const newUser = await User.create({ email, password });
+
+    // Invalidate and Update Redis Cache
+    await redisClient.del("users");
+    await redisClient.setEx(
+      `user:${newUser.id}`,
+      3600,
+      JSON.stringify({ id: newUser.id, email: newUser.email })
     );
+
     res.status(201).json({ id: newUser.id, email: newUser.email });
   } catch (err) {
-    if (err.status === 408) {
-      return res.status(408).json({ message: err.message });
-    }
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 });
 
-app.post("/user/login", taskManagerMiddleware, async (req, res) => {
+// User Login
+app.post("/user/login", async (req, res, next) => {
   const { email, password } = req.body;
 
   try {
@@ -145,16 +174,14 @@ app.post("/user/login", taskManagerMiddleware, async (req, res) => {
         .json({ message: "Email and password are required." });
     }
 
-    const user = await executeTaskWithTimeout(
-      () => User.findOne({ where: { email } }),
-      TASK_TIMEOUT,
-      res
-    );
+    // Find User by Email
+    const user = await User.findOne({ where: { email } });
 
     if (!user) {
       return res.status(404).json({ message: "User not found." });
     }
 
+    // Validate Password (Consider Hashing in Production)
     if (user.password !== password) {
       return res.status(400).json({ message: "Invalid email or password." });
     }
@@ -164,32 +191,29 @@ app.post("/user/login", taskManagerMiddleware, async (req, res) => {
       user: { id: user.id, email: user.email },
     });
   } catch (err) {
-    if (err.status === 408) {
-      return res.status(408).json({ message: err.message });
-    }
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 });
 
-app.get("/user/:id", taskManagerMiddleware, async (req, res) => {
+// Get User by ID
+app.get("/user/:id", async (req, res, next) => {
   const { id } = req.params;
 
   try {
+    // Check Redis Cache
     const cachedUser = await redisClient.get(`user:${id}`);
 
     if (cachedUser) {
       return res.json(JSON.parse(cachedUser));
     } else {
-      const user = await executeTaskWithTimeout(
-        () => User.findByPk(id),
-        TASK_TIMEOUT,
-        res
-      );
+      // Fetch User from Database
+      const user = await User.findByPk(id);
 
       if (!user) {
         return res.status(404).json({ message: "User not found." });
       }
 
+      // Cache the User Data
       await redisClient.setEx(
         `user:${id}`,
         3600,
@@ -199,90 +223,73 @@ app.get("/user/:id", taskManagerMiddleware, async (req, res) => {
       return res.json({ id: user.id, email: user.email });
     }
   } catch (err) {
-    if (err.status === 408) {
-      return res.status(408).json({ message: err.message });
-    }
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 });
 
-app.get("/user", taskManagerMiddleware, async (req, res) => {
+// Get All Users
+app.get("/user", async (req, res, next) => {
   try {
+    // Check Redis Cache
     const cachedUsers = await redisClient.get("users");
 
     if (cachedUsers) {
       return res.json(JSON.parse(cachedUsers));
     } else {
-      const users = await executeTaskWithTimeout(
-        () => User.findAll(),
-        TASK_TIMEOUT,
-        res
-      );
+      // Fetch All Users from Database
+      const users = await User.findAll({
+        attributes: ["id", "email"], // Select only necessary fields
+      });
 
+      // Cache the Users Data
       await redisClient.setEx("users", 3600, JSON.stringify(users));
 
       return res.json(users);
     }
   } catch (err) {
-    if (err.status === 408) {
-      return res.status(408).json({ message: err.message });
-    }
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 });
 
-app.post("/event", taskManagerMiddleware, async (req, res) => {
+// Create a New Event
+app.post("/event", async (req, res, next) => {
   const eventData = req.body;
 
   try {
-    if (
-      !eventData.name ||
-      !eventData.date_time ||
-      !eventData.venue ||
-      !eventData.total_seats
-    ) {
+    const { name, date_time, venue, total_seats } = eventData;
+
+    // Validate Required Fields
+    if (!name || !date_time || !venue || !total_seats) {
       return res.status(400).json({ message: "Missing required fields." });
     }
 
-    const newEvent = await executeTaskWithTimeout(
-      () => Event.create(eventData),
-      TASK_TIMEOUT,
-      res
-    );
+    // Create New Event
+    const newEvent = await Event.create(eventData);
+
     res.status(201).json(newEvent);
   } catch (err) {
-    if (err.status === 408) {
-      return res.status(408).json({ message: err.message });
-    }
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 });
 
-app.get("/event", taskManagerMiddleware, async (req, res) => {
+// Get All Events
+app.get("/event", async (req, res, next) => {
   try {
-    const events = await executeTaskWithTimeout(
-      () => Event.findAll(),
-      TASK_TIMEOUT,
-      res
-    );
+    // await new Promise((resolve) => setTimeout(resolve, 6000));
+    const events = await Event.findAll();
+
     res.json(events);
   } catch (err) {
-    if (err.status === 408) {
-      return res.status(408).json({ message: err.message });
-    }
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 });
 
-app.get("/event/:id", taskManagerMiddleware, async (req, res) => {
+// Get Event by ID
+app.get("/event/:id", async (req, res, next) => {
   const { id } = req.params;
 
   try {
-    const event = await executeTaskWithTimeout(
-      () => Event.findByPk(id),
-      TASK_TIMEOUT,
-      res
-    );
+    const event = await Event.findByPk(id);
 
     if (!event) {
       return res.status(404).json({ message: "Event not found." });
@@ -290,13 +297,20 @@ app.get("/event/:id", taskManagerMiddleware, async (req, res) => {
 
     res.json(event);
   } catch (err) {
-    if (err.status === 408) {
-      return res.status(408).json({ message: err.message });
-    }
-    res.status(500).json({ message: err.message });
+    next(err);
   }
 });
 
+// Global Error Handling Middleware (Should be Last)
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  if (!res.headersSent) {
+    // If headers are not sent, send a 500 Internal Server Error
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Start the Server
 app.listen(4001, () => {
-  console.log("Listening on 4001");
+  console.log(`Listening on port 4001`);
 });
