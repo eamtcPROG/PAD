@@ -1,0 +1,22 @@
+# Ignore bin and obj folders
+bin/
+obj/
+
+# Ignore user-specific files
+*.user
+*.rsuser
+*.suo
+*.csproj.user
+
+# Ignore Yarn and NPM-related files
+node_modules/
+yarn-error.log
+npm-debug.log
+package-lock.json
+
+# Ignore IDE configurations
+.vscode/
+.idea/
+
+# Ignore build output
+/app/publish

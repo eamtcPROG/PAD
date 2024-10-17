@@ -1,11 +1,20 @@
+using Gateway;
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddReverseProxy()
-    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+
+builder.Configuration.AddJsonFile("appsettings.Development.json", optional: false, reloadOnChange: true);
+
+// Add services to the container.
+builder.Services.AddControllers();
+
+// Add HttpClient for forwarding requests
+builder.Services.AddHttpClient();
+
 
 var app = builder.Build();
 
+app.UseRouting();
 
-app.MapReverseProxy();
+app.MapControllers();
 
 app.Run();
