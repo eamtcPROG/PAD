@@ -77,6 +77,23 @@ const taskManagerMiddleware = (req, res, next) => {
 app.use(taskManagerMiddleware);
 app.use(timeoutMiddleware(TASK_TIMEOUT));
 
+const SERVICE_DISCOVERY_URL = process.env.SERVICE_DISCOVERY_URL || 'http://servicediscovery:8080/api/ServiceDiscovery';
+
+const getUserServiceAddress = async () => {
+  try {
+    const response = await axios.get(`${SERVICE_DISCOVERY_URL}/service/user`);
+    console.log('User service address:', response.data);
+    if (!response.data || !response.data.address) {
+      throw new Error('User service not found');
+    }
+    
+    return response.data.address; // Address includes IP and port
+  } catch (error) {
+    console.error('Error fetching user service address:', error.message);
+    throw error; // Handle error appropriately
+  }
+};
+
 // Status Endpoint
 app.get("/status", (req, res) => {
   res.json({ status: "Ticket Order service is up and running!" });
@@ -150,7 +167,13 @@ app.post("/order/create-with-user", async (req, res, next) => {
   const { user_id, orderData } = req.body;
 
   try {
-    const response = await axios.get(`http://user:4001/user/${user_id}`); // Await the request
+    const url = await getUserServiceAddress();
+    if(!url) {
+      return res.status(500).json({ message: "User service not found" });
+    }
+
+    console.log(req, req.body,user_id, orderData);
+    const response = await axios.get(`${url}/user/${user_id}`);
     const user = response.data;
 
     if (!user) {
@@ -158,7 +181,7 @@ app.post("/order/create-with-user", async (req, res, next) => {
     }
 
     const newOrder = new Order({ ...orderData, user_id });
-    await newOrder.save(); // Await the save operation
+    await newOrder.save(); 
 
     // Invalidate the cache
     await redisClient.del("orders");

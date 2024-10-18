@@ -17,7 +17,7 @@ namespace Gateway.Controllers
             _serviceDiscoveryUrl = configuration["ServiceDiscovery:Url"]
                                     ?? throw new ArgumentNullException("ServiceDiscovery:Url");
         }
-        
+
 
         [HttpGet, HttpPost, HttpPut, HttpDelete, HttpPatch]
         public async Task<IActionResult> HandleRequest(string serviceName, string catchAll)
@@ -40,15 +40,33 @@ namespace Gateway.Controllers
             // Build the target URL
             var targetUrl = $"{serviceInfo.Address}/{catchAll}{Request.QueryString}";
 
-            // Create the outgoing request
+            // Enable buffering to allow multiple reads of the request body
+            Request.EnableBuffering();
+
+            // Read the request body into a MemoryStream
+            using var memoryStream = new MemoryStream();
+            await Request.Body.CopyToAsync(memoryStream);
+            memoryStream.Position = 0; // Reset position to read it again
+
+            // Create a new HttpRequestMessage for forwarding
             var forwardRequest = new HttpRequestMessage
             {
                 Method = new HttpMethod(Request.Method),
-                RequestUri = new Uri(targetUrl),
-                Content = new StreamContent(Request.Body)
+                RequestUri = new Uri(targetUrl)
             };
 
-            // Copy the request headers
+            // If there's a body (e.g., for POST, PUT requests), copy it
+            if (Request.Method != HttpMethod.Get.Method && Request.Method != HttpMethod.Delete.Method)
+            {
+                forwardRequest.Content = new StreamContent(memoryStream);
+                // Ensure content type is correctly forwarded (e.g., application/json)
+                if (Request.ContentType != null)
+                {
+                    forwardRequest.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(Request.ContentType);
+                }
+            }
+
+            // Copy all request headers
             foreach (var header in Request.Headers)
             {
                 forwardRequest.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
@@ -57,7 +75,7 @@ namespace Gateway.Controllers
             // Send the request to the target service
             var forwardResponse = await client.SendAsync(forwardRequest);
 
-            // Copy the response headers
+            // Copy response headers from the target service to the gateway response
             foreach (var header in forwardResponse.Headers)
             {
                 Response.Headers[header.Key] = header.Value.ToArray();
@@ -75,6 +93,7 @@ namespace Gateway.Controllers
             var responseContent = await forwardResponse.Content.ReadAsByteArrayAsync();
             return File(responseContent, forwardResponse.Content.Headers.ContentType?.ToString() ?? "application/octet-stream");
         }
+
     }
 
     public class ServiceDiscoveryResponse

@@ -7,6 +7,11 @@ const User = require("./models/user");
 const Event = require("./models/event");
 const redis = require("redis");
 
+const SERVICE_DISCOVERY_URL = process.env.SERVICE_DISCOVERY_URL || 'http://servicediscovery:5002/api/ServiceDiscovery';
+const SERVICE_NAME = process.env.SERVICE_NAME || 'user';
+const SERVICE_PORT = process.env.SERVICE_PORT || 4001;
+const SERVICE_ADDRESS = `${process.env.SERVICE_ADDRESS}:${SERVICE_PORT}` || `http://user:${SERVICE_PORT}`;
+
 // Initialize Express App
 const app = express();
 
@@ -310,10 +315,7 @@ app.use((err, req, res, next) => {
   }
 });
 
-const SERVICE_DISCOVERY_URL = process.env.SERVICE_DISCOVERY_URL || 'http://servicediscovery:5002/api/ServiceDiscovery';
-const SERVICE_NAME = process.env.SERVICE_NAME || 'user';
-const SERVICE_PORT = process.env.SERVICE_PORT || 4001;
-const SERVICE_ADDRESS = `${process.env.SERVICE_ADDRESS}:${SERVICE_PORT}` || `http://user:${SERVICE_PORT}`;
+
 
 const registerService = async () => {
   try {
