@@ -6,14 +6,21 @@ const sequelize = require("./config/database");
 const User = require("./models/user");
 const Event = require("./models/event");
 const redis = require("redis");
-const os = require('os');
-const httpClient = require('./httpclient');
+const os = require("os");
+const httpClient = require("./httpclient");
+const http = require("http");
+const { Server } = require("socket.io");
+const schedule = require("node-cron");
 
 const INSTANCE_ID = os.hostname();
-const SERVICE_DISCOVERY_URL = process.env.SERVICE_DISCOVERY_URL || 'http://servicediscovery:5002/api/ServiceDiscovery';
-const SERVICE_NAME = process.env.SERVICE_NAME || 'user';
+const SERVICE_DISCOVERY_URL =
+  process.env.SERVICE_DISCOVERY_URL ||
+  "http://servicediscovery:5002/api/ServiceDiscovery";
+const SERVICE_NAME = process.env.SERVICE_NAME || "user";
 const SERVICE_PORT = process.env.SERVICE_PORT || 4001;
-const SERVICE_ADDRESS = `${process.env.SERVICE_ADDRESS}:${SERVICE_PORT}` || `http://user:${SERVICE_PORT}`;
+const SERVICE_ADDRESS =
+  `${process.env.SERVICE_ADDRESS}:${SERVICE_PORT}` ||
+  `http://user:${SERVICE_PORT}`;
 
 // Initialize Express App
 const app = express();
@@ -111,15 +118,13 @@ const timeoutMiddleware = (timeout) => {
 app.use(taskManagerMiddleware);
 app.use(timeoutMiddleware(TASK_TIMEOUT));
 app.use((req, res, next) => {
-  res.append('X-Instance-Id', INSTANCE_ID);  // Append the instanceId header
+  res.append("X-Instance-Id", INSTANCE_ID); // Append the instanceId header
   next();
 });
 
-
-
 // Status Endpoint
 app.get("/status", async (req, res) => {
-//  await new Promise(resolve => setTimeout(resolve, 6000));
+  //  await new Promise(resolve => setTimeout(resolve, 6000));
   res.json({ status: "User service is up and running!" });
 });
 
@@ -213,7 +218,7 @@ app.post("/user/login", async (req, res, next) => {
 // Get User by ID
 app.get("/user/:id", async (req, res, next) => {
   const { id } = req.params;
-  await new Promise(resolve => setTimeout(resolve, 6000));
+  await new Promise((resolve) => setTimeout(resolve, 6000));
   try {
     // Check Redis Cache
     const cachedUser = await redisClient.get(`user:${id}`);
@@ -271,15 +276,18 @@ app.post("/event", async (req, res, next) => {
   const eventData = req.body;
 
   try {
-    const { name, date_time, venue, total_seats } = eventData;
+    const { name, date_time, venue, total_seats, due_date } = eventData;
 
     // Validate Required Fields
-    if (!name || !date_time || !venue || !total_seats) {
+    if (!name || !date_time || !venue || !total_seats || !due_date) {
       return res.status(400).json({ message: "Missing required fields." });
     }
 
     // Create New Event
-    const newEvent = await Event.create(eventData);
+    const newEvent = await Event.create({
+      ...eventData,
+      due_date: due_date || 60,
+    });
 
     res.status(201).json(newEvent);
   } catch (err) {
@@ -316,20 +324,108 @@ app.get("/event/:id", async (req, res, next) => {
   }
 });
 
-// Global Error Handling Middleware (Should be Last)
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*", // Adjust in production for security
+    methods: ["GET", "POST"],
+  },
+});
+
+const subscriptions = {};
+
+// Handle Socket.IO Connections
+io.on("connection", (socket) => {
+  console.log(`Client connected: ${socket.id}`);
+
+  // Initialize subscription list for the socket
+  subscriptions[socket.id] = [];
+
+  // Handle subscription to an event with due_date
+  socket.on("subscribeToEvent", (data) => {
+    const { eventId } = data;
+
+    if (!eventId) {
+      socket.emit("error", { message: "eventId are required." });
+      return;
+    }
+
+    // Add subscription
+    subscriptions[socket.id].push({ eventId });
+
+    console.log(
+      `Socket ${socket.id} subscribed to event ${eventId}`
+    );
+
+    socket.emit("subscribed", { eventId });
+  });
+
+  // Handle unsubscription from an event
+  socket.on("unsubscribeFromEvent", (eventId) => {
+    if (!eventId) {
+      socket.emit("error", { message: "eventId is required." });
+      return;
+    }
+
+    // Remove subscription
+    subscriptions[socket.id] = subscriptions[socket.id].filter(
+      (sub) => sub.eventId !== eventId
+    );
+    const room = `event_${eventId}`;
+    socket.leave(room);
+    console.log(`Socket ${socket.id} unsubscribed from event ${eventId}`);
+    socket.emit("unsubscribed", { eventId });
+  });
+
+  // Handle disconnection
+  socket.on("disconnect", () => {
+    console.log(`Client disconnected: ${socket.id}`);
+    delete subscriptions[socket.id];
+  });
+});
+
+
+const checkUpcomingEvents = async () => {
+  try {
+
+    const events = await Event.findAll();
+
+    events.forEach((event) => {
+
+
+      console.log(`Event ${event.id}`);
+      
+      io.emit("eventReminder", {
+        eventId: event.id,
+        name: event.name,
+        date_time: event.date_time,
+        venue: event.venue,
+        message: `Reminder: Event ${event.name}.`,
+      });
+      console.log(`Sent reminder for event ${event.id} to subscribers`);
+
+      
+    });
+  } catch (err) {
+    console.error("Error checking upcoming events:", err);
+  }
+};
+
+schedule.schedule("* * * * *", () => {
+  console.log("Checking for upcoming events...");
+  checkUpcomingEvents();
+});
+
 app.use((err, req, res, next) => {
   console.error(err.stack);
   if (!res.headersSent) {
-    // If headers are not sent, send a 500 Internal Server Error
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-
-
 const registerService = async () => {
   const config = {
-    method: 'post',
+    method: "post",
     url: `${SERVICE_DISCOVERY_URL}/register`,
     data: {
       ServiceName: SERVICE_NAME,
@@ -340,16 +436,14 @@ const registerService = async () => {
     const response = await httpClient(config);
     console.log(`Service registered successfully: ${response.data}`);
   } catch (error) {
-    console.error('Error registering service:', error.message);
+    console.error("Error registering service:", error.message);
   }
 };
 
-
 const deregisterService = async () => {
   try {
-
     const config = {
-      method: 'delete',
+      method: "delete",
       url: `${SERVICE_DISCOVERY_URL}/deregister`,
       data: {
         ServiceName: SERVICE_NAME,
@@ -360,23 +454,21 @@ const deregisterService = async () => {
     const response = await httpClient(config);
     console.log(`Service deregistered successfully: ${response.data}`);
   } catch (error) {
-    console.error('Error deregistering service:', error.message);
+    console.error("Error deregistering service:", error.message);
   }
 };
 
-
 const gracefulShutdown = async () => {
-  console.log('Shutting down gracefully...');
+  console.log("Shutting down gracefully...");
   await deregisterService();
   server.close(() => {
-    console.log('Server closed');
+    console.log("Server closed");
     process.exit(0);
   });
 };
 
-
-process.on('SIGINT', gracefulShutdown);
-process.on('SIGTERM', gracefulShutdown);
+process.on("SIGINT", gracefulShutdown);
+process.on("SIGTERM", gracefulShutdown);
 
 // Start the Server
 app.listen(SERVICE_PORT, async () => {

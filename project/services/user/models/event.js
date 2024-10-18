@@ -32,6 +32,14 @@ const Event = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
+    due_date: {
+      // New field as integer timestamp
+      type: DataTypes.BIGINT, // Use BIGINT to accommodate large timestamp values
+      allowNull: true,
+      validate: {
+        min: 1, // At least 1 millisecond before
+      },
+    },
   },
   {
     freezeTableName: true,

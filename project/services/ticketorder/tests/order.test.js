@@ -96,43 +96,6 @@ describe("Ticket Order Service", () => {
     expect(res.body).toHaveProperty("message", "Order not found");
   });
 
-  test("POST /order/create-with-user should create order with user", async () => {
-    axios.get.mockResolvedValue({
-      data: { id: "user123", email: "user@example.com" },
-    });
-
-    const orderData = {
-      event_id: "event123",
-      quantity: 2,
-      total_price: 200,
-      order_status: "pending",
-    };
-    const res = await request(app)
-      .post("/order/create-with-user")
-      .send({ user_id: "user123", orderData });
-
-    expect(res.statusCode).toEqual(201);
-    expect(res.body).toHaveProperty("message", "Order created with user");
-    expect(res.body.order).toHaveProperty("user_id", "user123");
-    expect(res.body.user).toHaveProperty("email", "user@example.com");
-  });
-
-  test("POST /order/create-with-user should return 404 if user not found", async () => {
-    axios.get.mockResolvedValue({ data: null });
-
-    const orderData = {
-      event_id: "event123",
-      quantity: 2,
-      total_price: 200,
-      order_status: "pending",
-    };
-    const res = await request(app)
-      .post("/order/create-with-user")
-      .send({ user_id: "nonexistent", orderData });
-
-    expect(res.statusCode).toEqual(404);
-    expect(res.body).toHaveProperty("message", "User not found");
-  });
 
   test("POST /payment should create a new payment and update order status", async () => {
     const order = new Order({

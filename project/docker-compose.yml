@@ -98,6 +98,19 @@ services:
     networks:
       - app-network
 
+  client-demo:
+    build: ./services/clientdemo
+    ports:
+      - '6000:6000'
+    depends_on:
+      - user
+      - redis
+    environment:
+      SERVICE_PORT: 6000
+      SOCKET_SERVER_URL: http://user:4001
+    networks:
+      - app-network
+
 volumes:
   mongo-data:
   postgres-data:
