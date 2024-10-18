@@ -1,12 +1,13 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
-const axios = require("axios");
+// const axios = require("axios");
 const sequelize = require("./config/database");
 const User = require("./models/user");
 const Event = require("./models/event");
 const redis = require("redis");
 const os = require('os');
+const httpClient = require('./httpclient');
 
 const INSTANCE_ID = os.hostname();
 const SERVICE_DISCOVERY_URL = process.env.SERVICE_DISCOVERY_URL || 'http://servicediscovery:5002/api/ServiceDiscovery';
@@ -55,7 +56,7 @@ sequelize
 
 // Configuration Constants
 const MAX_CONCURRENT_TASKS = 10;
-const TASK_TIMEOUT = 5000; // 5 seconds
+const TASK_TIMEOUT = 9000; // 5 seconds
 
 let currentTaskCount = 0;
 
@@ -114,8 +115,11 @@ app.use((req, res, next) => {
   next();
 });
 
+
+
 // Status Endpoint
-app.get("/status", (req, res) => {
+app.get("/status", async (req, res) => {
+//  await new Promise(resolve => setTimeout(resolve, 6000));
   res.json({ status: "User service is up and running!" });
 });
 
@@ -209,7 +213,7 @@ app.post("/user/login", async (req, res, next) => {
 // Get User by ID
 app.get("/user/:id", async (req, res, next) => {
   const { id } = req.params;
-
+  await new Promise(resolve => setTimeout(resolve, 6000));
   try {
     // Check Redis Cache
     const cachedUser = await redisClient.get(`user:${id}`);
@@ -324,11 +328,16 @@ app.use((err, req, res, next) => {
 
 
 const registerService = async () => {
-  try {
-    const response = await axios.post(`${SERVICE_DISCOVERY_URL}/register`, {
+  const config = {
+    method: 'post',
+    url: `${SERVICE_DISCOVERY_URL}/register`,
+    data: {
       ServiceName: SERVICE_NAME,
       Address: SERVICE_ADDRESS,
-    });
+    },
+  };
+  try {
+    const response = await httpClient(config);
     console.log(`Service registered successfully: ${response.data}`);
   } catch (error) {
     console.error('Error registering service:', error.message);
@@ -338,12 +347,17 @@ const registerService = async () => {
 
 const deregisterService = async () => {
   try {
-    const response = await axios.delete(`${SERVICE_DISCOVERY_URL}/deregister`, {
+
+    const config = {
+      method: 'delete',
+      url: `${SERVICE_DISCOVERY_URL}/deregister`,
       data: {
         ServiceName: SERVICE_NAME,
         Address: SERVICE_ADDRESS,
       },
-    });
+    };
+
+    const response = await httpClient(config);
     console.log(`Service deregistered successfully: ${response.data}`);
   } catch (error) {
     console.error('Error deregistering service:', error.message);

@@ -24,6 +24,7 @@ namespace ServiceDiscovery.Controllers
                 return BadRequest("ServiceName and Address are required.");
             }
 
+            // await Task.Delay(6000);
             await _repository.RegisterServiceAsync(instance);
             return Ok("Service registered successfully.");
         }
@@ -35,7 +36,7 @@ namespace ServiceDiscovery.Controllers
             {
                 return BadRequest("ServiceName and Address are required.");
             }
-
+            // await Task.Delay(6000);
             await _repository.DeregisterServiceAsync(instance);
             return Ok("Service deregistered successfully.");
         }
@@ -62,7 +63,7 @@ namespace ServiceDiscovery.Controllers
             {
                 return NotFound("Service not found.");
             }
-
+            // await Task.Delay(6000);
             return Ok(serviceAddresses);
         }
     }

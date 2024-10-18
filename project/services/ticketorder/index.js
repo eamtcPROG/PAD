@@ -1,10 +1,11 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
-const axios = require("axios");
+// const axios = require("axios");
 const { Order, Payment } = require("./models");
 const redis = require("redis");
 const os = require('os');
+const httpClient = require('./httpclient');
 
 const INSTANCE_ID = os.hostname();
 const app = express();
@@ -86,14 +87,21 @@ app.use((req, res, next) => {
 const SERVICE_DISCOVERY_URL = process.env.SERVICE_DISCOVERY_URL || 'http://servicediscovery:8080/api/ServiceDiscovery';
 
 const getUserServiceAddress = async () => {
+  const config = {
+    method: 'get',
+    url: `${SERVICE_DISCOVERY_URL}/service/user`,
+    timeout: TASK_TIMEOUT, // Optional: Set specific timeout for this request
+  };
+  
   try {
-    const response = await axios.get(`${SERVICE_DISCOVERY_URL}/service/user`);
+    // const response = await axios.get(`${SERVICE_DISCOVERY_URL}/service/user`);
+    const response = await httpClient(config);
     console.log('User service address:', response.data);
-    if (!response.data || !response.data.address) {
+    if (!response.data || !response.data.length) {
       throw new Error('User service not found');
     }
     
-    return response.data.address; // Address includes IP and port
+    return response.data[0]; // Address includes IP and port
   } catch (error) {
     console.error('Error fetching user service address:', error.message);
     throw error; // Handle error appropriately
@@ -179,7 +187,13 @@ app.post("/order/create-with-user", async (req, res, next) => {
     }
 
     console.log(req, req.body,user_id, orderData);
-    const response = await axios.get(`${url}/user/${user_id}`);
+    // const response = await axios.get(`${url}/user/${user_id}`);
+    const config = {
+      method: 'get',
+      url: `${url}/user/${user_id}`,
+      timeout: TASK_TIMEOUT
+    };
+    const response = await httpClient(config);
     const user = response.data;
 
     if (!user) {

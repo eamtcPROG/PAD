@@ -1,6 +1,7 @@
 const app = require('./index');
 const mongoose = require('mongoose');
-const axios = require('axios');
+// const axios = require('axios');
+const httpClient = require('./httpclient');
 const process = require('process');
 
 const mongoURI = process.env.MONGO_URI || process.env.MONGO_URL;
@@ -12,10 +13,19 @@ const SERVICE_ADDRESS = `${process.env.SERVICE_ADDRESS}:${SERVICE_PORT}` || `htt
 
 const registerService = async () => {
   try {
-    const response = await axios.post(`${SERVICE_DISCOVERY_URL}/register`, {
-      ServiceName: SERVICE_NAME,
-      Address: SERVICE_ADDRESS,
+
+    const response = await httpClient({
+      method: 'post',
+      url: `${SERVICE_DISCOVERY_URL}/register`,
+      data: {
+        ServiceName: SERVICE_NAME,
+        Address: SERVICE_ADDRESS,
+      },
     });
+    // const response = await axios.post(`${SERVICE_DISCOVERY_URL}/register`, {
+    //   ServiceName: SERVICE_NAME,
+    //   Address: SERVICE_ADDRESS,
+    // });
     console.log(`Service registered successfully: ${response.data}`);
   } catch (error) {
     console.error('Error registering service:', error.message);
@@ -25,12 +35,20 @@ const registerService = async () => {
 
 const deregisterService = async () => {
   try {
-    const response = await axios.delete(`${SERVICE_DISCOVERY_URL}/deregister`, {
+    const response = await httpClient({
+      method: 'delete',
+      url: `${SERVICE_DISCOVERY_URL}/deregister`,
       data: {
         ServiceName: SERVICE_NAME,
         Address: SERVICE_ADDRESS,
       },
     });
+    // const response = await axios.delete(`${SERVICE_DISCOVERY_URL}/deregister`, {
+    //   data: {
+    //     ServiceName: SERVICE_NAME,
+    //     Address: SERVICE_ADDRESS,
+    //   },
+    // });
     console.log(`Service deregistered successfully: ${response.data}`);
   } catch (error) {
     console.error('Error deregistering service:', error.message);

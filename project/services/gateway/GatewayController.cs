@@ -90,7 +90,7 @@ namespace Gateway.Controllers
             }
 
             Response.StatusCode = (int)forwardResponse.StatusCode;
-
+// await Task.Delay(6000);
             var responseContent = await forwardResponse.Content.ReadAsByteArrayAsync();
             return File(responseContent, forwardResponse.Content.Headers.ContentType?.ToString() ?? "application/octet-stream");
         }
