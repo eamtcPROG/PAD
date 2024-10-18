@@ -4,7 +4,9 @@ const cors = require("cors");
 const axios = require("axios");
 const { Order, Payment } = require("./models");
 const redis = require("redis");
+const os = require('os');
 
+const INSTANCE_ID = os.hostname();
 const app = express();
 app.use(bodyParser.json());
 app.use(cors());
@@ -76,6 +78,10 @@ const taskManagerMiddleware = (req, res, next) => {
 // Apply Middlewares
 app.use(taskManagerMiddleware);
 app.use(timeoutMiddleware(TASK_TIMEOUT));
+app.use((req, res, next) => {
+  res.append('X-Instance-Id', INSTANCE_ID); 
+  next();
+});
 
 const SERVICE_DISCOVERY_URL = process.env.SERVICE_DISCOVERY_URL || 'http://servicediscovery:8080/api/ServiceDiscovery';
 

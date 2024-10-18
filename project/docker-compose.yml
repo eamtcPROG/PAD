@@ -1,9 +1,8 @@
 services:
   ticketorder:
     build: ./services/ticketorder
-    container_name: ticketorder
     ports:
-      - '4000:4000'
+      - '4000'
     depends_on:
       - mongo
       - redis
@@ -20,9 +19,8 @@ services:
 
   user:
     build: ./services/user
-    container_name: user
     ports:
-      - '4001:4001'
+      - '4001'
     depends_on:
       - postgres
       - redis

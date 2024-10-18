@@ -6,7 +6,9 @@ const sequelize = require("./config/database");
 const User = require("./models/user");
 const Event = require("./models/event");
 const redis = require("redis");
+const os = require('os');
 
+const INSTANCE_ID = os.hostname();
 const SERVICE_DISCOVERY_URL = process.env.SERVICE_DISCOVERY_URL || 'http://servicediscovery:5002/api/ServiceDiscovery';
 const SERVICE_NAME = process.env.SERVICE_NAME || 'user';
 const SERVICE_PORT = process.env.SERVICE_PORT || 4001;
@@ -107,6 +109,10 @@ const timeoutMiddleware = (timeout) => {
 // Apply Global Middlewares
 app.use(taskManagerMiddleware);
 app.use(timeoutMiddleware(TASK_TIMEOUT));
+app.use((req, res, next) => {
+  res.append('X-Instance-Id', INSTANCE_ID);  // Append the instanceId header
+  next();
+});
 
 // Status Endpoint
 app.get("/status", (req, res) => {

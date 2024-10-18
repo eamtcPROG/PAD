@@ -40,16 +40,30 @@ namespace ServiceDiscovery.Controllers
             return Ok("Service deregistered successfully.");
         }
 
+        // [HttpGet("service/{serviceName}")]
+        // public async Task<IActionResult> GetService(string serviceName)
+        // {
+        //     var address = await _repository.GetServiceAsync(serviceName);
+        //     if (address == null)
+        //     {
+        //         return NotFound("Service not found.");
+        //     }
+
+        //     return Ok(new { Address = address });
+        // }
+
         [HttpGet("service/{serviceName}")]
         public async Task<IActionResult> GetService(string serviceName)
         {
-            var address = await _repository.GetServiceAsync(serviceName);
-            if (address == null)
+            // Modify the repository to get all service addresses
+            var serviceAddresses = await _repository.GetAllServicesAsync(serviceName);
+
+            if (serviceAddresses == null || !serviceAddresses.Any())
             {
                 return NotFound("Service not found.");
             }
 
-            return Ok(new { Address = address });
+            return Ok(serviceAddresses);
         }
     }
 }
