@@ -9,7 +9,8 @@ const redis = require("redis");
 const os = require("os");
 const httpClient = require("./httpclient");
 const http = require("http");
-const { Server } = require("socket.io");
+const socketIo = require('socket.io');
+const WebSocket = require('ws');
 const schedule = require("node-cron");
 
 const INSTANCE_ID = os.hostname();
@@ -24,7 +25,8 @@ const SERVICE_ADDRESS =
 
 // Initialize Express App
 const app = express();
-
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ port: 4005});
 // Apply Global Middlewares
 app.use(bodyParser.json());
 app.use(cors());
@@ -324,97 +326,10 @@ app.get("/event/:id", async (req, res, next) => {
   }
 });
 
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*", // Adjust in production for security
-    methods: ["GET", "POST"],
-  },
-});
-
-const subscriptions = {};
-
-// Handle Socket.IO Connections
-io.on("connection", (socket) => {
-  console.log(`Client connected: ${socket.id}`);
-
-  // Initialize subscription list for the socket
-  subscriptions[socket.id] = [];
-
-  // Handle subscription to an event with due_date
-  socket.on("subscribeToEvent", (data) => {
-    const { eventId } = data;
-
-    if (!eventId) {
-      socket.emit("error", { message: "eventId are required." });
-      return;
-    }
-
-    // Add subscription
-    subscriptions[socket.id].push({ eventId });
-
-    console.log(
-      `Socket ${socket.id} subscribed to event ${eventId}`
-    );
-
-    socket.emit("subscribed", { eventId });
-  });
-
-  // Handle unsubscription from an event
-  socket.on("unsubscribeFromEvent", (eventId) => {
-    if (!eventId) {
-      socket.emit("error", { message: "eventId is required." });
-      return;
-    }
-
-    // Remove subscription
-    subscriptions[socket.id] = subscriptions[socket.id].filter(
-      (sub) => sub.eventId !== eventId
-    );
-    const room = `event_${eventId}`;
-    socket.leave(room);
-    console.log(`Socket ${socket.id} unsubscribed from event ${eventId}`);
-    socket.emit("unsubscribed", { eventId });
-  });
-
-  // Handle disconnection
-  socket.on("disconnect", () => {
-    console.log(`Client disconnected: ${socket.id}`);
-    delete subscriptions[socket.id];
-  });
-});
 
 
-const checkUpcomingEvents = async () => {
-  try {
-
-    const events = await Event.findAll();
-
-    events.forEach((event) => {
 
 
-      console.log(`Event ${event.id}`);
-      
-      io.emit("eventReminder", {
-        eventId: event.id,
-        name: event.name,
-        date_time: event.date_time,
-        venue: event.venue,
-        message: `Reminder: Event ${event.name}.`,
-      });
-      console.log(`Sent reminder for event ${event.id} to subscribers`);
-
-      
-    });
-  } catch (err) {
-    console.error("Error checking upcoming events:", err);
-  }
-};
-
-schedule.schedule("* * * * *", () => {
-  console.log("Checking for upcoming events...");
-  checkUpcomingEvents();
-});
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -469,9 +384,91 @@ const gracefulShutdown = async () => {
 
 process.on("SIGINT", gracefulShutdown);
 process.on("SIGTERM", gracefulShutdown);
+const subscriptions = {};
+wss.on('connection', (ws, req) => {
+  console.log('Client connected via WebSocket');
 
-// Start the Server
-app.listen(SERVICE_PORT, async () => {
+  ws.on('message', (data) => {
+    try {
+      const message = JSON.parse(data);
+      const { type, payload } = message;
+
+      if (type === 'subscribeToEvent') {
+        const { eventId } = payload;
+        if (!eventId) {
+          ws.send(JSON.stringify({ type: 'error', payload: { message: 'eventId is required to subscribe.' } }));
+          return;
+        }
+
+        if (!subscriptions[eventId]) {
+          subscriptions[eventId] = new Set();
+        }
+        subscriptions[eventId].add(ws);
+        console.log(`Client subscribed to event ${eventId}`);
+      } else if (type === 'unsubscribeFromEvent') {
+        const { eventId } = payload;
+        if (!eventId) {
+          ws.send(JSON.stringify({ type: 'error', payload: { message: 'eventId is required to unsubscribe.' } }));
+          return;
+        }
+
+        if (subscriptions[eventId]) {
+          subscriptions[eventId].delete(ws);
+          console.log(`Client unsubscribed from event ${eventId}`);
+          if (subscriptions[eventId].size === 0) {
+            delete subscriptions[eventId];
+          }
+        }
+      } else {
+        ws.send(JSON.stringify({ type: 'error', payload: { message: 'Unknown message type.' } }));
+      }
+    } catch (err) {
+      console.error('Error parsing message:', err);
+      ws.send(JSON.stringify({ type: 'error', payload: { message: 'Invalid message format.' } }));
+    }
+  });
+
+  ws.on('close', () => {
+    console.log('Client disconnected from WebSocket');
+    // Remove client from all subscriptions
+    for (const eventId in subscriptions) {
+      subscriptions[eventId].delete(ws);
+      if (subscriptions[eventId].size === 0) {
+        delete subscriptions[eventId];
+      }
+    }
+  });
+});
+
+app.post('/broadcast-event', (req, res) => {
+  const { message, eventId } = req.body;
+
+  if (!message || !eventId) {
+    return res.status(400).json({ message: 'Message is required.' });
+  }
+
+  if (subscriptions[eventId] && subscriptions[eventId].size > 0) {
+    subscriptions[eventId].forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({
+          type: 'eventReminder',
+          payload: {
+            eventId: eventId,
+            reminder: message,
+          },
+        }));
+      }
+    });
+    console.log(`Broadcasted message to event ${eventId}: ${message}`);
+    res.json({ message: `Broadcasted message to event ${eventId}.` });
+  } else {
+    console.log(`No subscribers found for event ${eventId}.`);
+    res.status(200).json({ message: `No subscribers for event ${eventId}.` });
+  }
+});
+
+server.listen(SERVICE_PORT,async () => {
   console.log(`Listening on port ${SERVICE_PORT}`);
   await registerService();
 });
+

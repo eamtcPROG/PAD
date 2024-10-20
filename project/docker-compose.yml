@@ -21,6 +21,7 @@ services:
     build: ./services/user
     ports:
       - '4001'
+      - '4005:4005'
     depends_on:
       - postgres
       - redis
@@ -33,6 +34,8 @@ services:
       SERVICE_ADDRESS: http://user
     networks:
       - app-network
+    labels:
+      - "service=user"
 
   mongo:
     image: mongo:latest
@@ -46,6 +49,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: password
     networks:
       - app-network
+    
   
   postgres:
     image: postgres:latest
@@ -107,9 +111,24 @@ services:
       - redis
     environment:
       SERVICE_PORT: 6000
-      SOCKET_SERVER_URL: http://user:4001
     networks:
       - app-network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  client-demo-2:
+    build: ./services/clientdemo
+    ports:
+      - '6001:6000'
+    depends_on:
+      - user
+      - redis
+    environment:
+      SERVICE_PORT: 6000
+    networks:
+      - app-network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   mongo-data:
