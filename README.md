@@ -18,6 +18,8 @@ An example of similar a product is Ticketmaster (https://www.ticketmaster.com/),
 
 ![scheme](images/service_boundaries.png)
 
+![scheme](images/PAD_LAB_2.png)
+
 ## Technology Stack and Communication Patterns:
 
 - User Service
@@ -28,6 +30,11 @@ An example of similar a product is Ticketmaster (https://www.ticketmaster.com/),
   - MongoDB
 - APIGateway
     - C# - RESTful APIs, ASP.NET Core
+    - Responsibilities:
+      - Single entry point for client requests
+      - Request routing to appropriate services
+      - Handling cross-cutting concerns
+      - Implementing circuit breaker pattern
 
 ## Design Data Management:
 
@@ -124,3 +131,65 @@ gRPC for communication between services
 ## Deployment and Scaling:
 
 Docker Compose will be used to containerize and deploy each microservice independently, for scaling, isolated environments, and to simplified deployment across different platforms.
+
+```json
+docker compose up --build
+```
+
+### Circuit Breaker Pattern
+  - Purpose: Protect the system from cascading failures by preventing calls to a service that is likely to fail.
+  - Implementation:
+    - Steps Use the Polly to implement the circuit breaker.
+    - Configure policies for handling transient faults, defining thresholds for failures.
+    - Wrap external service calls in the API Gateway with circuit breaker policies.
+  
+### ELK Stack
+  - Purpose: Centralized logging and monitoring for better observability.
+  - Implementation Steps:
+    - Elasticsearch: Deploy as the central log storage.
+    - Logstash: Set up to collect logs from all services.
+    - Kibana: Use for visualizing logs and creating dashboards.
+    - Configure the User Service and Ticket Order Service and API Gateway to send logs to Logstash.
+
+### Two-Phase Commit
+  - Purpose: Ensure atomicity in distributed transactions that span multiple services and databases.
+  - Implementation Steps:
+   - Implement a transaction coordinator module within the Ticket Order Service.
+   - Phase 1 (Prepare Phase):
+    - The Ticket Order Service requests the User Service to reserve seats.
+    - Both services prepare to commit changes and lock necessary resources.
+   - Phase 2 (Commit Phase):
+    - If both services are ready, they commit the transaction.
+    - If any service fails, both services roll back changes.
+
+### Consistent Hashing for Cache
+  - Purpose: Efficient distribution of cache entries to reduce cache misses and ensure scalability.
+  - Implementation Steps:
+    - Use Redis Cluster across services.
+    - Implement consistent hashing to evenly distribute keys across cache nodes.
+
+### Cache High Availability
+  - Purpose: Ensure the caching layer remains available even if some cache nodes fail.
+  - Implementation Steps:
+    - Configure Redis with replication master-slave setup for high availability.
+    - Ensure that the services can detect a failed cache node and redirect requests to a replica.
+
+### Database Replication and Failover
+  - Purpose: Enhance data availability and reliability.
+  - Implementation Steps:
+    - PostgreSQL (User Service): Set up streaming replication with three replicas one primary, two standbys.
+
+### Data Warehouse and ETL
+  - Purpose: Consolidate data for analytics and reporting.
+  - Implementation Steps:
+    - Set up a data warehouse using a suitable platform.
+    - Develop ETL processes to extract data from PostgreSQL and MongoDB.
+    - Schedule periodic updates to sync data.
+    - Use the data warehouse to generate reports
+
+
+
+
+
+
+ 
