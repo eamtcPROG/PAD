@@ -139,7 +139,6 @@ docker compose up --build
 ### Circuit Breaker Pattern
   - Purpose: Protect the system from cascading failures by preventing calls to a service that is likely to fail.
   - Implementation:
-    - Steps Use the Polly to implement the circuit breaker.
     - Configure policies for handling transient faults, defining thresholds for failures.
     - Wrap external service calls in the API Gateway with circuit breaker policies.
   
@@ -156,11 +155,11 @@ docker compose up --build
   - Implementation Steps:
    - Implement a transaction coordinator module within the Ticket Order Service.
    - Phase 1 (Prepare Phase):
-    - The Ticket Order Service requests the User Service to reserve seats.
-    - Both services prepare to commit changes and lock necessary resources.
+      - The Ticket Order Service requests the User Service to reserve seats.
+      - Both services prepare to commit changes and lock necessary resources.
    - Phase 2 (Commit Phase):
-    - If both services are ready, they commit the transaction.
-    - If any service fails, both services roll back changes.
+      - If both services are ready, they commit the transaction.
+      - If any service fails, both services roll back changes.
 
 ### Consistent Hashing for Cache
   - Purpose: Efficient distribution of cache entries to reduce cache misses and ensure scalability.
@@ -182,10 +181,9 @@ docker compose up --build
 ### Data Warehouse and ETL
   - Purpose: Consolidate data for analytics and reporting.
   - Implementation Steps:
-    - Set up a data warehouse using a suitable platform.
+    - Set up a data warehouse using a PostgreSQL.
     - Develop ETL processes to extract data from PostgreSQL and MongoDB.
     - Schedule periodic updates to sync data.
-    - Use the data warehouse to generate reports
 
 
 
