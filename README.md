@@ -185,9 +185,8 @@ docker compose up --build
     - Develop ETL processes to extract data from PostgreSQL and MongoDB.
     - Schedule periodic updates to sync data.
 
-
-
-
+### Postman collection
+[here](reesources/collection.json)
 
 
  

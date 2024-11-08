@@ -1,0 +1,567 @@
+{
+	"info": {
+		"_postman_id": "75a74c14-5362-434a-90a6-76d009cefa4d",
+		"name": "E-Ticket",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "12208934"
+	},
+	"item": [
+		{
+			"name": "TicketOrder",
+			"item": [
+				{
+					"name": "Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://{{TICKET_ORDER_SERVICE_URL}}/status",
+							"protocol": "http",
+							"host": [
+								"{{TICKET_ORDER_SERVICE_URL}}"
+							],
+							"path": [
+								"status"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetListOrder",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://{{TICKET_ORDER_SERVICE_URL}}/order",
+							"protocol": "http",
+							"host": [
+								"{{TICKET_ORDER_SERVICE_URL}}"
+							],
+							"path": [
+								"order"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "User",
+			"item": [
+				{
+					"name": "Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:56723/status",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "56723",
+							"path": [
+								"status"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AddUser",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"user2@example.com\",\n  \"password\": \"password123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://{{USER_SERVICE_URL}}/user",
+							"protocol": "http",
+							"host": [
+								"{{USER_SERVICE_URL}}"
+							],
+							"path": [
+								"user"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Gateway",
+			"item": [
+				{
+					"name": "StatusUser",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://{{GATEWAY}}/user/status",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"user",
+								"status"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AddUser",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"usereee110@example.com\",\n  \"password\": \"password123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://{{GATEWAY}}/user/user",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"user",
+								"user"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Register",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "http://{{GATEWAY}}/user/user/register",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"user",
+								"user",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Login",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "http://{{GATEWAY}}/user/user/login",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"user",
+								"user",
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetUserById",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://{{GATEWAY}}/user/user/1",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"user",
+								"user",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetUserList",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://{{GATEWAY}}/user/user",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"user",
+								"user"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetEventList",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://{{GATEWAY}}/user/event",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"user",
+								"event"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AddEvent",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Tech Conference 2024\",\n  \"description\": \"A conference discussing the latest in technology and innovation.\",\n  \"date_time\": \"2024-10-18T09:00:00\",\n  \"venue\": {\n    \"name\": \"Tech Hub Convention Center\",\n    \"address\": {\n      \"street\": \"123 Innovation Way\",\n      \"city\": \"Tech City\",\n      \"state\": \"CA\",\n      \"zip_code\": \"90001\"\n    },\n    \"capacity\": 500\n  },\n  \"available_seats\": 400,\n  \"total_seats\": 500,\n  \"due_date\":1729281045\n}\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://{{GATEWAY}}/user/event",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"user",
+								"event"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetEventById",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://{{GATEWAY}}/user/event/1",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"user",
+								"event",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "StatusOrderTicket",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://{{GATEWAY}}/ticketorder/status",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"ticketorder",
+								"status"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AddOrder",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "http://{{GATEWAY}}/ticketorder/order",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"ticketorder",
+								"order"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetOrderList",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://{{GATEWAY}}/ticketorder/order",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"ticketorder",
+								"order"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetOrderById",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://{{GATEWAY}}/ticketorder/order/1",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"ticketorder",
+								"order",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GetPaymentById",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://{{GATEWAY}}/ticketorder/payment/1",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"ticketorder",
+								"payment",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "AddPayment",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "http://{{GATEWAY}}/ticketorder/payment",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"ticketorder",
+								"payment"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "CreateOrder",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": \"1\",\n  \"orderData\": {\n    \"event_id\": \"1\",\n    \"ticket_quantity\": 2\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://{{GATEWAY}}/ticketorder/order/create-with-user",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"ticketorder",
+								"order",
+								"create-with-user"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://{{GATEWAY}}/status",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"status"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "ServiceDiscovery",
+			"item": [
+				{
+					"name": "Status",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"ServiceName\": \"ticketorder\",\n    \"Address\": \"http://ticketorder:4000\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://{{ServiceDiscovery}}/status",
+							"protocol": "http",
+							"host": [
+								"{{ServiceDiscovery}}"
+							],
+							"path": [
+								"status"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Client",
+			"item": [
+				{
+					"name": "Subscribe",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"eventId\":4\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://localhost:6000/subscribe",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "6000",
+							"path": [
+								"subscribe"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "New Request",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"eventId\":3,\n    \"message\":\"Event 3 close\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "http://{{GATEWAY}}/user/broadcast-event",
+							"protocol": "http",
+							"host": [
+								"{{GATEWAY}}"
+							],
+							"path": [
+								"user",
+								"broadcast-event"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "New Request",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
