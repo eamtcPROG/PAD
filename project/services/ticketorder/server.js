@@ -13,7 +13,7 @@ const SERVICE_ADDRESS = `${process.env.SERVICE_ADDRESS}:${SERVICE_PORT}` || `htt
 
 const registerService = async () => {
   try {
-
+    console.log("Service address",SERVICE_ADDRESS)
     const response = await httpClient({
       method: 'post',
       url: `${SERVICE_DISCOVERY_URL}/register`,

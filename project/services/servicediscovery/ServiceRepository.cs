@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
-using System.Text.Json;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading.Tasks;
+using System.Linq;
 
 namespace ServiceDiscovery
 {
@@ -9,7 +12,6 @@ namespace ServiceDiscovery
         Task RegisterServiceAsync(ServiceInstance instance);
         Task DeregisterServiceAsync(ServiceInstance instance);
         Task<string?> GetServiceAsync(string serviceName);
-
         Task<IEnumerable<string>> GetAllServicesAsync(string serviceName);
     }
 
@@ -23,7 +25,7 @@ namespace ServiceDiscovery
         {
             _redis = redis;
             _db = _redis.GetDatabase();
-            _logger = logger;  // Inject logger
+            _logger = logger;
         }
 
         private string GetServiceKey(string serviceName) => $"services:{serviceName}";
@@ -31,25 +33,45 @@ namespace ServiceDiscovery
         public async Task RegisterServiceAsync(ServiceInstance instance)
         {
             string key = GetServiceKey(instance.ServiceName);
-            await _db.SetAddAsync(key, instance.Address);
-            // Optionally set an expiration to handle stale entries
-            await _db.KeyExpireAsync(key, TimeSpan.FromHours(1));
-            _logger.LogInformation($"Service {instance.ServiceName} registered with address {instance.Address}");
+
+            // Generate a unique identifier for the instance
+            string uniqueInstanceId = $"{instance.Address}-{Guid.NewGuid()}";
+
+            // Store the instance information in a hash for better structure
+            await _db.HashSetAsync(key, uniqueInstanceId, instance.Address);
+
+            _logger.LogInformation($"Service {instance.ServiceName} registered with unique ID {uniqueInstanceId} and address {instance.Address}");
         }
 
         public async Task DeregisterServiceAsync(ServiceInstance instance)
         {
             string key = GetServiceKey(instance.ServiceName);
-            await _db.SetRemoveAsync(key, instance.Address);
-            _logger.LogInformation($"Service {instance.ServiceName} deregistered with address {instance.Address}");
+
+            // Retrieve all instance IDs
+            var entries = await _db.HashGetAllAsync(key);
+
+            // Find the entry matching the instance address
+            var entryToRemove = entries.FirstOrDefault(entry => entry.Value == instance.Address);
+
+            if (entryToRemove.Name.HasValue)
+            {
+                // Remove the specific instance
+                await _db.HashDeleteAsync(key, entryToRemove.Name);
+
+                _logger.LogInformation($"Service {instance.ServiceName} deregistered with unique ID {entryToRemove.Name} and address {instance.Address}");
+            }
+            else
+            {
+                _logger.LogWarning($"Service instance with address {instance.Address} not found for deregistration.");
+            }
         }
 
         public async Task<string?> GetServiceAsync(string serviceName)
         {
             string key = GetServiceKey(serviceName);
-            var services = await _db.SetMembersAsync(key);
+            var entries = await _db.HashGetAllAsync(key);
 
-            if (services.Length == 0)
+            if (entries.Length == 0)
             {
                 _logger.LogWarning($"No services found for {serviceName}");
                 return null;
@@ -57,25 +79,33 @@ namespace ServiceDiscovery
 
             // Log all registered services
             _logger.LogInformation($"Services registered for {serviceName}:");
-            foreach (var service in services)
+            foreach (var entry in entries)
             {
-                _logger.LogInformation($" - {service}");
+                _logger.LogInformation($" - {entry.Value}");
             }
 
-            // Simple round-robin or random selection
+            // Simple random selection
             var random = new Random();
-            int index = random.Next(services.Length);
+            int index = random.Next(entries.Length);
 
-            _logger.LogInformation($"Selected service: {services[index]}");
+            var selectedService = entries[index].Value.ToString();
 
-            return services[index];
+            _logger.LogInformation($"Selected service: {selectedService}");
+
+            return selectedService;
         }
 
         public async Task<IEnumerable<string>> GetAllServicesAsync(string serviceName)
-    {
-        string key = GetServiceKey(serviceName);
-        var services = await _db.SetMembersAsync(key);
-        return services.Select(s => s.ToString()).ToList();
-    }
+        {
+            string key = GetServiceKey(serviceName);
+            var entries = await _db.HashGetAllAsync(key);
+
+            foreach (var entry in entries)
+            {
+                _logger.LogInformation($"Service: {entry.Value}");
+            }
+
+            return entries.Select(entry => entry.Value.ToString()).ToList();
+        }
     }
 }

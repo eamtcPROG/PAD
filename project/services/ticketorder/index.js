@@ -109,7 +109,10 @@ const getUserServiceAddress = async () => {
 };
 
 // Status Endpoint
-app.get("/status", (req, res) => {
+app.get("/status", async (req, res) => {
+  //  await new Promise(resolve => setTimeout(resolve, 6000));
+  // throw new Error("Test error");
+  // return res.status(500).json({ message: "Test error" });
   res.json({ status: "Ticket Order service is up and running!" });
 });
 

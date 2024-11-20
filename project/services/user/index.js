@@ -346,7 +346,10 @@ const registerService = async () => {
       ServiceName: SERVICE_NAME,
       Address: SERVICE_ADDRESS,
     },
+
   };
+
+  console.log("Service address",SERVICE_ADDRESS)
   try {
     const response = await httpClient(config);
     console.log(`Service registered successfully: ${response.data}`);
