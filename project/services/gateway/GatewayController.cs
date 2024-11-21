@@ -9,6 +9,7 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Http;
 using System.IO;
 using System.Net.Http.Headers;
+using System.Collections.Generic;
 
 namespace Gateway.Controllers
 {
@@ -20,8 +21,9 @@ namespace Gateway.Controllers
         private readonly string _serviceDiscoveryUrl;
         private readonly ConcurrentDictionary<string, CircuitBreakerState> _circuitBreakerStates = new ConcurrentDictionary<string, CircuitBreakerState>();
 
-        private const int FailureThreshold = 3;
-        private const int OpenStateDuration = 60; // seconds
+        private const int FailureThreshold = 1;
+        private const int MaxRetriesPerInstance = 3;
+        private const int OpenStateDuration = 15; // seconds
 
         public GatewayController(IHttpClientFactory httpClientFactory, IConfiguration configuration)
         {
@@ -50,50 +52,35 @@ namespace Gateway.Controllers
                 return NotFound($"No instances found for service '{serviceName}'.");
             }
 
-            // Get current time
             var now = DateTime.UtcNow;
 
-            // Filter out service instances whose circuit breaker is Open
-            var availableServices = new List<string>();
-
-            foreach (var serviceAddress in serviceAddresses)
+            // Get circuit breaker state for the service
+            var cbState = _circuitBreakerStates.GetOrAdd(serviceName, new CircuitBreakerState
             {
-                var cbState = _circuitBreakerStates.GetOrAdd(serviceAddress, new CircuitBreakerState
-                {
-                    Status = CircuitBreakerStatus.Closed,
-                    FailureCount = 0,
-                    LastStateChangedTime = now
-                });
+                Status = CircuitBreakerStatus.Closed,
+                FailureCount = 0,
+                LastStateChangedTime = now
+            });
 
-                if (cbState.Status == CircuitBreakerStatus.Open)
+            if (cbState.Status == CircuitBreakerStatus.Open)
+            {
+                // Check if the open duration has passed
+                if ((now - cbState.LastStateChangedTime).TotalSeconds >= OpenStateDuration)
                 {
-                    // Check if the open duration has passed
-                    if ((now - cbState.LastStateChangedTime).TotalSeconds >= OpenStateDuration)
-                    {
-                        // Move to Half-Open
-                        cbState.Status = CircuitBreakerStatus.HalfOpen;
-                        cbState.LastStateChangedTime = now;
-                        availableServices.Add(serviceAddress);
-                    }
-                    else
-                    {
-                        // Still in Open state
-                        continue;
-                    }
+                    // Move to Half-Open
+                    cbState.Status = CircuitBreakerStatus.HalfOpen;
+                    cbState.LastStateChangedTime = now;
+                    Console.WriteLine($"Circuit breaker for service '{serviceName}' moved to Half-Open state.");
                 }
                 else
                 {
-                    availableServices.Add(serviceAddress);
+                    // Still in Open state
+                    return StatusCode(503, $"Circuit breaker is open for service '{serviceName}'.");
                 }
             }
 
-            if (availableServices.Count == 0)
-            {
-                return StatusCode(503, "All instances are unavailable.");
-            }
-
-            // Randomize the availableServices list
-            availableServices = availableServices.OrderBy(s => Guid.NewGuid()).ToList();
+            // Randomize the service addresses
+            var availableServices = serviceAddresses.OrderBy(s => Guid.NewGuid()).ToList();
 
             // Enable buffering to allow multiple reads of the request body
             Request.EnableBuffering();
@@ -112,14 +99,44 @@ namespace Gateway.Controllers
             {
                 Console.WriteLine($"Trying to forward request to service '{serviceName}' instance at {selectedService}.");
 
-                var result = await ForwardRequestToService(selectedService, catchAll, requestContent);
-                if (result != null)
+                for (int attempt = 1; attempt <= MaxRetriesPerInstance; attempt++)
                 {
-                    return result;
+                    var result = await ForwardRequestToService(selectedService, catchAll, requestContent);
+
+                    if (result != null)
+                    {
+                        // Successful request
+                        if (cbState.Status == CircuitBreakerStatus.HalfOpen || cbState.Status == CircuitBreakerStatus.Open)
+                        {
+                            ResetCircuitBreaker(serviceName);
+                        }
+                        return result;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Attempt {attempt} failed for service '{serviceName}' instance at {selectedService}.");
+
+                        if (attempt == MaxRetriesPerInstance)
+                        {
+                            // After MaxRetriesPerInstance, move on to next service instance
+                            Console.WriteLine($"Moving to next service instance after {MaxRetriesPerInstance} attempts.");
+                        }
+                    }
                 }
             }
 
-            // If we reach here, all attempts failed
+            // After all service instances have been tried and failed
+            // Increment failure count for the service
+            HandleFailure(serviceName);
+
+            // Check if failure count reaches threshold
+            if (_circuitBreakerStates[serviceName].FailureCount >= FailureThreshold)
+            {
+                cbState.Status = CircuitBreakerStatus.Open;
+                cbState.LastStateChangedTime = DateTime.UtcNow;
+                Console.WriteLine($"Circuit breaker for service '{serviceName}' opened.");
+            }
+
             return StatusCode(503, "Service unavailable.");
         }
 
@@ -157,15 +174,12 @@ namespace Gateway.Controllers
                 if ((int)forwardResponse.StatusCode >= 500)
                 {
                     Console.WriteLine($"Server error {forwardResponse.StatusCode} for service {selectedService}");
-                    // Server error, handle failure
-                    HandleFailure(selectedService);
+                    // Server error
                     return null;
                 }
                 else
                 {
-                    // Success, reset failure count
-                    ResetFailure(selectedService);
-
+                    // Success
                     foreach (var header in forwardResponse.Headers)
                     {
                         Response.Headers[header.Key] = header.Value.ToArray();
@@ -183,18 +197,17 @@ namespace Gateway.Controllers
             }
             catch (Exception ex)
             {
-                // Handle failure
-                HandleFailure(selectedService);
+                // Log exception
                 Console.WriteLine($"Error forwarding request to {selectedService}: {ex.Message}");
                 return null;
             }
         }
 
-        private void HandleFailure(string serviceAddress)
+        private void HandleFailure(string serviceName)
         {
             var now = DateTime.UtcNow;
 
-            var cbState = _circuitBreakerStates.GetOrAdd(serviceAddress, new CircuitBreakerState
+            var cbState = _circuitBreakerStates.GetOrAdd(serviceName, new CircuitBreakerState
             {
                 Status = CircuitBreakerStatus.Closed,
                 FailureCount = 0,
@@ -203,15 +216,15 @@ namespace Gateway.Controllers
 
             cbState.FailureCount++;
 
-            Console.WriteLine($"Request to {serviceAddress} failed. Failure count: {cbState.FailureCount}");
+            Console.WriteLine($"Failure count for service '{serviceName}': {cbState.FailureCount}");
 
-            if (cbState.Status == CircuitBreakerStatus.Closed || cbState.Status == CircuitBreakerStatus.HalfOpen)
+            if (cbState.Status == CircuitBreakerStatus.HalfOpen || cbState.Status == CircuitBreakerStatus.Closed)
             {
                 if (cbState.FailureCount >= FailureThreshold)
                 {
                     cbState.Status = CircuitBreakerStatus.Open;
                     cbState.LastStateChangedTime = now;
-                    Console.WriteLine($"Circuit breaker for {serviceAddress} tripped to Open state.");
+                    Console.WriteLine($"Circuit breaker for service '{serviceName}' tripped to Open state.");
                 }
             }
             else if (cbState.Status == CircuitBreakerStatus.HalfOpen)
@@ -220,33 +233,23 @@ namespace Gateway.Controllers
                 cbState.Status = CircuitBreakerStatus.Open;
                 cbState.LastStateChangedTime = now;
                 cbState.FailureCount = 0;
-                Console.WriteLine($"Circuit breaker for {serviceAddress} returned to Open state from Half-Open.");
+                Console.WriteLine($"Circuit breaker for service '{serviceName}' returned to Open state from Half-Open.");
             }
         }
 
-        private void ResetFailure(string serviceAddress)
+        private void ResetCircuitBreaker(string serviceName)
         {
-            Console.WriteLine("ResetFailure");
-            var cbState = _circuitBreakerStates.GetOrAdd(serviceAddress, new CircuitBreakerState
+            var cbState = _circuitBreakerStates.GetOrAdd(serviceName, new CircuitBreakerState
             {
                 Status = CircuitBreakerStatus.Closed,
                 FailureCount = 0,
                 LastStateChangedTime = DateTime.UtcNow
             });
 
-            if (cbState.Status == CircuitBreakerStatus.HalfOpen || cbState.Status == CircuitBreakerStatus.Open)
-            {
-                // Successful request in Half-Open or Open state, reset to Closed
-                cbState.Status = CircuitBreakerStatus.Closed;
-                cbState.FailureCount = 0;
-                cbState.LastStateChangedTime = DateTime.UtcNow;
-                Console.WriteLine($"Circuit breaker for {serviceAddress} reset to Closed state.");
-            }
-            else
-            {
-                // Successful request in Closed state, reset failure count
-                cbState.FailureCount = 0;
-            }
+            cbState.Status = CircuitBreakerStatus.Closed;
+            cbState.FailureCount = 0;
+            cbState.LastStateChangedTime = DateTime.UtcNow;
+            Console.WriteLine($"Circuit breaker for service '{serviceName}' reset to Closed state.");
         }
 
         private class CircuitBreakerState

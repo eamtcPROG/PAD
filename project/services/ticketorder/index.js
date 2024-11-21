@@ -4,9 +4,9 @@ const cors = require("cors");
 // const axios = require("axios");
 const { Order, Payment } = require("./models");
 const redis = require("redis");
-const os = require('os');
-const httpClient = require('./httpclient');
-const logger = require('./logger');
+const os = require("os");
+const httpClient = require("./httpclient");
+const logger = require("./logger");
 
 const INSTANCE_ID = os.hostname();
 const app = express();
@@ -51,12 +51,12 @@ const timeoutMiddleware = (timeout) => {
     }, timeout);
 
     // Clear the timer when the response is finished
-    res.on('finish', () => {
+    res.on("finish", () => {
       clearTimeout(timer);
     });
 
     // Clear the timer if the connection is closed
-    res.on('close', () => {
+    res.on("close", () => {
       clearTimeout(timer);
     });
 
@@ -81,30 +81,32 @@ const taskManagerMiddleware = (req, res, next) => {
 app.use(taskManagerMiddleware);
 app.use(timeoutMiddleware(TASK_TIMEOUT));
 app.use((req, res, next) => {
-  res.append('X-Instance-Id', INSTANCE_ID); 
+  res.append("X-Instance-Id", INSTANCE_ID);
   next();
 });
 
-const SERVICE_DISCOVERY_URL = process.env.SERVICE_DISCOVERY_URL || 'http://servicediscovery:8080/api/ServiceDiscovery';
+const SERVICE_DISCOVERY_URL =
+  process.env.SERVICE_DISCOVERY_URL ||
+  "http://servicediscovery:8080/api/ServiceDiscovery";
 
 const getUserServiceAddress = async () => {
   const config = {
-    method: 'get',
+    method: "get",
     url: `${SERVICE_DISCOVERY_URL}/service/user`,
     timeout: TASK_TIMEOUT, // Optional: Set specific timeout for this request
   };
-  
+
   try {
     // const response = await axios.get(`${SERVICE_DISCOVERY_URL}/service/user`);
     const response = await httpClient(config);
-    logger.log('User service address:', response.data);
+    logger.log("User service address:", response.data);
     if (!response.data || !response.data.length) {
-      throw new Error('User service not found');
+      throw new Error("User service not found");
     }
-    
+
     return response.data[0]; // Address includes IP and port
   } catch (error) {
-    logger.error('Error fetching user service address:', error.message);
+    logger.error("Error fetching user service address:", error.message);
     throw error; // Handle error appropriately
   }
 };
@@ -157,6 +159,20 @@ app.get("/order", async (req, res, next) => {
   }
 });
 
+app.get("/circuit-test/:id", async (req, res, next) => {
+  const { id } = req.params;
+
+  try {
+    if (id == "1") {
+      return res.status(500).json({ message: "Test error" });
+    } else {
+      return res.json({ message: "Test success" });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Get Order by ID
 app.get("/order/:id", async (req, res, next) => {
   const { id } = req.params;
@@ -186,16 +202,16 @@ app.post("/order/create-with-user", async (req, res, next) => {
 
   try {
     const url = await getUserServiceAddress();
-    if(!url) {
+    if (!url) {
       return res.status(500).json({ message: "User service not found" });
     }
 
-    logger.log(req, req.body,user_id, orderData);
+    logger.log(req, req.body, user_id, orderData);
     // const response = await axios.get(`${url}/user/${user_id}`);
     const config = {
-      method: 'get',
+      method: "get",
       url: `${url}/user/${user_id}`,
-      timeout: TASK_TIMEOUT
+      timeout: TASK_TIMEOUT,
     };
     const response = await httpClient(config);
     const user = response.data;
@@ -205,7 +221,7 @@ app.post("/order/create-with-user", async (req, res, next) => {
     }
 
     const newOrder = new Order({ ...orderData, user_id });
-    await newOrder.save(); 
+    await newOrder.save();
 
     // Invalidate the cache
     await redisClient.del("orders");
@@ -271,7 +287,7 @@ app.get("/payment/:id", async (req, res, next) => {
 app.use((err, req, res, next) => {
   logger.error(err.stack);
   if (!res.headersSent) {
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
