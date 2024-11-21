@@ -28,19 +28,26 @@ namespace ServiceDiscovery
             _logger = logger;
         }
 
-        private string GetServiceKey(string serviceName) => $"services:{serviceName}";
+        private string GetServiceKey(string serviceName) => $"sd:services:{serviceName}";
 
         public async Task RegisterServiceAsync(ServiceInstance instance)
         {
-            string key = GetServiceKey(instance.ServiceName);
+         string key = GetServiceKey(instance.ServiceName);
 
-            // Generate a unique identifier for the instance
-            string uniqueInstanceId = $"{instance.Address}-{Guid.NewGuid()}";
+    // Check the current type of the key
+    var keyType = await _db.KeyTypeAsync(key);
+    if (keyType != RedisType.Hash && keyType != RedisType.None)
+    {
+        throw new InvalidOperationException($"Key {key} is of type {keyType}, expected Hash.");
+    }
 
-            // Store the instance information in a hash for better structure
-            await _db.HashSetAsync(key, uniqueInstanceId, instance.Address);
+    // Generate a unique identifier for the instance
+    string uniqueInstanceId = $"{instance.Address}-{Guid.NewGuid()}";
 
-            _logger.LogInformation($"Service {instance.ServiceName} registered with unique ID {uniqueInstanceId} and address {instance.Address}");
+    // Store the instance information in a hash for better structure
+    await _db.HashSetAsync(key, uniqueInstanceId, instance.Address);
+
+            _logger.LogInformation($"[{DateTime.UtcNow:O}] [INFO] [servicediscovery] Service {instance.ServiceName} registered with unique ID {uniqueInstanceId} and address {instance.Address}");
         }
 
         public async Task DeregisterServiceAsync(ServiceInstance instance)
@@ -58,11 +65,11 @@ namespace ServiceDiscovery
                 // Remove the specific instance
                 await _db.HashDeleteAsync(key, entryToRemove.Name);
 
-                _logger.LogInformation($"Service {instance.ServiceName} deregistered with unique ID {entryToRemove.Name} and address {instance.Address}");
+                _logger.LogInformation($"[{DateTime.UtcNow:O}] [INFO] [servicediscovery] Service {instance.ServiceName} deregistered with unique ID {entryToRemove.Name} and address {instance.Address}");
             }
             else
             {
-                _logger.LogWarning($"Service instance with address {instance.Address} not found for deregistration.");
+                _logger.LogInformation($"[{DateTime.UtcNow:O}] [INFO] [servicediscovery] Service instance with address {instance.Address} not found for deregistration.");
             }
         }
 
@@ -73,15 +80,15 @@ namespace ServiceDiscovery
 
             if (entries.Length == 0)
             {
-                _logger.LogWarning($"No services found for {serviceName}");
+                _logger.LogInformation($"[{DateTime.UtcNow:O}] [INFO] [servicediscovery] No services found for {serviceName}");
                 return null;
             }
 
             // Log all registered services
-            _logger.LogInformation($"Services registered for {serviceName}:");
+            _logger.LogInformation($"[{DateTime.UtcNow:O}] [INFO] [servicediscovery] Services registered for {serviceName}:");
             foreach (var entry in entries)
             {
-                _logger.LogInformation($" - {entry.Value}");
+                _logger.LogInformation($"[{DateTime.UtcNow:O}] [INFO] [servicediscovery] - {entry.Value}");
             }
 
             // Simple random selection
@@ -90,7 +97,7 @@ namespace ServiceDiscovery
 
             var selectedService = entries[index].Value.ToString();
 
-            _logger.LogInformation($"Selected service: {selectedService}");
+            _logger.LogInformation($"[{DateTime.UtcNow:O}] [INFO] [servicediscovery] Selected service: {selectedService}");
 
             return selectedService;
         }
@@ -102,7 +109,7 @@ namespace ServiceDiscovery
 
             foreach (var entry in entries)
             {
-                _logger.LogInformation($"Service: {entry.Value}");
+                _logger.LogInformation($"[{DateTime.UtcNow:O}] [INFO] [servicediscovery] Service: {entry.Value}");
             }
 
             return entries.Select(entry => entry.Value.ToString()).ToList();

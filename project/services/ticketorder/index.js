@@ -6,6 +6,7 @@ const { Order, Payment } = require("./models");
 const redis = require("redis");
 const os = require('os');
 const httpClient = require('./httpclient');
+const logger = require('./logger');
 
 const INSTANCE_ID = os.hostname();
 const app = express();
@@ -18,15 +19,15 @@ const redisClient = redis.createClient({
 });
 
 redisClient.on("error", (err) => {
-  console.error("Redis connection error:", err);
+  logger.error("Redis connection error:", err);
 });
 
 redisClient.on("connect", () => {
-  console.log("Connected to Redis");
+  logger.log(`Connected to Redis`);
 });
 
 redisClient.connect().catch((err) => {
-  console.error("Error connecting to Redis:", err);
+  logger.error("Error connecting to Redis:", err);
 });
 
 process.on("SIGINT", () => {
@@ -96,14 +97,14 @@ const getUserServiceAddress = async () => {
   try {
     // const response = await axios.get(`${SERVICE_DISCOVERY_URL}/service/user`);
     const response = await httpClient(config);
-    console.log('User service address:', response.data);
+    logger.log('User service address:', response.data);
     if (!response.data || !response.data.length) {
       throw new Error('User service not found');
     }
     
     return response.data[0]; // Address includes IP and port
   } catch (error) {
-    console.error('Error fetching user service address:', error.message);
+    logger.error('Error fetching user service address:', error.message);
     throw error; // Handle error appropriately
   }
 };
@@ -189,7 +190,7 @@ app.post("/order/create-with-user", async (req, res, next) => {
       return res.status(500).json({ message: "User service not found" });
     }
 
-    console.log(req, req.body,user_id, orderData);
+    logger.log(req, req.body,user_id, orderData);
     // const response = await axios.get(`${url}/user/${user_id}`);
     const config = {
       method: 'get',
@@ -268,7 +269,7 @@ app.get("/payment/:id", async (req, res, next) => {
 
 // Error Handling Middleware (Should be last)
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  logger.error(err.stack);
   if (!res.headersSent) {
     res.status(500).json({ error: 'Internal Server Error' });
   }

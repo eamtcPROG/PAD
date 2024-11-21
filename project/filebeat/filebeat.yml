@@ -1,0 +1,50 @@
+filebeat.inputs:
+  - type: container
+    paths:
+      - '/var/lib/docker/containers/*/*.log'
+    processors:
+      - add_docker_metadata: ~
+      - dissect:
+          tokenizer: '[%{timestamp}] [%{loglevel}] [%{service}] %{message}'
+          field: "message"
+          target_prefix: "parsed"
+      - drop_event:
+          when.not:
+            or:
+              - equals:
+                  parsed.service: "user"
+              - equals:
+                  parsed.service: "ticketorder"
+              - equals:
+                  parsed.service: "gateway"
+              - equals:
+                  parsed.service: "servicediscovery"
+
+output.logstash:
+  hosts: ["logstash:5044"]
+
+setup.kibana:
+  host: "kibana:5601"
+
+# Optional: Configure logging level
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat.log
+  keepfiles: 7
+  permissions: 0644
+
+
+# filebeat.inputs:
+#   - type: container
+#     paths:
+#       - /var/lib/docker/containers/*/*.log
+#     processors:
+#       - add_docker_metadata: ~
+
+# output.logstash:
+#   hosts: ["logstash:5044"]
+
+# setup.kibana:
+#   host: "kibana:5601"

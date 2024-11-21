@@ -9,9 +9,11 @@ const redis = require("redis");
 const os = require("os");
 const httpClient = require("./httpclient");
 const http = require("http");
-const socketIo = require('socket.io');
-const WebSocket = require('ws');
+const socketIo = require("socket.io");
+const WebSocket = require("ws");
 const schedule = require("node-cron");
+const logger = require("./logger");
+const axios = require("axios");
 
 const INSTANCE_ID = os.hostname();
 const SERVICE_DISCOVERY_URL =
@@ -26,7 +28,7 @@ const SERVICE_ADDRESS =
 // Initialize Express App
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ port: 4005});
+const wss = new WebSocket.Server({ port: 4005 });
 // Apply Global Middlewares
 app.use(bodyParser.json());
 app.use(cors());
@@ -37,15 +39,15 @@ const redisClient = redis.createClient({
 });
 
 redisClient.on("error", (err) => {
-  console.error("Redis connection error:", err);
+  logger.error("Redis connection error:", err);
 });
 
 redisClient.on("connect", () => {
-  console.log("Connected to Redis");
+  logger.log("Connected to Redis");
 });
 
 redisClient.connect().catch((err) => {
-  console.error("Error connecting to Redis:", err);
+  logger.error("Error connecting to Redis:", err);
 });
 
 // Handle Redis Client Shutdown Gracefully
@@ -57,10 +59,10 @@ process.on("SIGINT", () => {
 sequelize
   .sync({ alter: true })
   .then(() => {
-    console.log("PostgreSQL connected and models synchronized");
+    logger.log("PostgreSQL connected and models synchronized");
   })
   .catch((err) => {
-    console.error("Unable to connect to the database:", err);
+    logger.error("Unable to connect to the database:", err);
   });
 
 // Configuration Constants
@@ -97,7 +99,7 @@ const timeoutMiddleware = (timeout) => {
     // Set a timer to trigger the timeout
     const timer = setTimeout(() => {
       if (!res.headersSent) {
-        console.log(`Request timed out: ${req.method} ${req.originalUrl}`);
+        logger.log(`Request timed out: ${req.method} ${req.originalUrl}`);
         res.status(408).json({ message: "Request Timeout" });
       }
     }, timeout);
@@ -326,13 +328,8 @@ app.get("/event/:id", async (req, res, next) => {
   }
 });
 
-
-
-
-
-
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  logger.error(err.stack);
   if (!res.headersSent) {
     res.status(500).json({ error: "Internal Server Error" });
   }
@@ -346,15 +343,24 @@ const registerService = async () => {
       ServiceName: SERVICE_NAME,
       Address: SERVICE_ADDRESS,
     },
-
   };
 
-  console.log("Service address",SERVICE_ADDRESS)
+  logger.log(
+    "Service address",
+    SERVICE_ADDRESS,
+    `${SERVICE_DISCOVERY_URL}/register`,
+    SERVICE_NAME,
+    SERVICE_ADDRESS
+  );
   try {
-    const response = await httpClient(config);
-    console.log(`Service registered successfully: ${response.data}`);
+    // const response = await httpClient(config);
+const response = await axios.post(`${SERVICE_DISCOVERY_URL}/register`, {
+      ServiceName: SERVICE_NAME,
+      Address: SERVICE_ADDRESS,
+    });
+    logger.log(`Service registered successfully: ${response.data}`);
   } catch (error) {
-    console.error("Error registering service:", error.message);
+    logger.error("Error registering service:", error.message);
   }
 };
 
@@ -370,17 +376,17 @@ const deregisterService = async () => {
     };
 
     const response = await httpClient(config);
-    console.log(`Service deregistered successfully: ${response.data}`);
+    logger.log(`Service deregistered successfully: ${response.data}`);
   } catch (error) {
-    console.error("Error deregistering service:", error.message);
+    logger.error("Error deregistering service:", error.message);
   }
 };
 
 const gracefulShutdown = async () => {
-  console.log("Shutting down gracefully...");
+  logger.log("Shutting down gracefully...");
   await deregisterService();
   server.close(() => {
-    console.log("Server closed");
+    logger.log("Server closed");
     process.exit(0);
   });
 };
@@ -388,18 +394,23 @@ const gracefulShutdown = async () => {
 process.on("SIGINT", gracefulShutdown);
 process.on("SIGTERM", gracefulShutdown);
 const subscriptions = {};
-wss.on('connection', (ws, req) => {
-  console.log('Client connected via WebSocket');
+wss.on("connection", (ws, req) => {
+  logger.log("Client connected via WebSocket");
 
-  ws.on('message', (data) => {
+  ws.on("message", (data) => {
     try {
       const message = JSON.parse(data);
       const { type, payload } = message;
 
-      if (type === 'subscribeToEvent') {
+      if (type === "subscribeToEvent") {
         const { eventId } = payload;
         if (!eventId) {
-          ws.send(JSON.stringify({ type: 'error', payload: { message: 'eventId is required to subscribe.' } }));
+          ws.send(
+            JSON.stringify({
+              type: "error",
+              payload: { message: "eventId is required to subscribe." },
+            })
+          );
           return;
         }
 
@@ -407,32 +418,47 @@ wss.on('connection', (ws, req) => {
           subscriptions[eventId] = new Set();
         }
         subscriptions[eventId].add(ws);
-        console.log(`Client subscribed to event ${eventId}`);
-      } else if (type === 'unsubscribeFromEvent') {
+        logger.log(`Client subscribed to event ${eventId}`);
+      } else if (type === "unsubscribeFromEvent") {
         const { eventId } = payload;
         if (!eventId) {
-          ws.send(JSON.stringify({ type: 'error', payload: { message: 'eventId is required to unsubscribe.' } }));
+          ws.send(
+            JSON.stringify({
+              type: "error",
+              payload: { message: "eventId is required to unsubscribe." },
+            })
+          );
           return;
         }
 
         if (subscriptions[eventId]) {
           subscriptions[eventId].delete(ws);
-          console.log(`Client unsubscribed from event ${eventId}`);
+          logger.log(`Client unsubscribed from event ${eventId}`);
           if (subscriptions[eventId].size === 0) {
             delete subscriptions[eventId];
           }
         }
       } else {
-        ws.send(JSON.stringify({ type: 'error', payload: { message: 'Unknown message type.' } }));
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            payload: { message: "Unknown message type." },
+          })
+        );
       }
     } catch (err) {
-      console.error('Error parsing message:', err);
-      ws.send(JSON.stringify({ type: 'error', payload: { message: 'Invalid message format.' } }));
+      logger.error("Error parsing message:", err);
+      ws.send(
+        JSON.stringify({
+          type: "error",
+          payload: { message: "Invalid message format." },
+        })
+      );
     }
   });
 
-  ws.on('close', () => {
-    console.log('Client disconnected from WebSocket');
+  ws.on("close", () => {
+    logger.log("Client disconnected from WebSocket");
     // Remove client from all subscriptions
     for (const eventId in subscriptions) {
       subscriptions[eventId].delete(ws);
@@ -443,35 +469,36 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-app.post('/broadcast-event', (req, res) => {
+app.post("/broadcast-event", (req, res) => {
   const { message, eventId } = req.body;
 
   if (!message || !eventId) {
-    return res.status(400).json({ message: 'Message is required.' });
+    return res.status(400).json({ message: "Message is required." });
   }
 
   if (subscriptions[eventId] && subscriptions[eventId].size > 0) {
     subscriptions[eventId].forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({
-          type: 'eventReminder',
-          payload: {
-            eventId: eventId,
-            reminder: message,
-          },
-        }));
+        client.send(
+          JSON.stringify({
+            type: "eventReminder",
+            payload: {
+              eventId: eventId,
+              reminder: message,
+            },
+          })
+        );
       }
     });
-    console.log(`Broadcasted message to event ${eventId}: ${message}`);
+    logger.log(`Broadcasted message to event ${eventId}: ${message}`);
     res.json({ message: `Broadcasted message to event ${eventId}.` });
   } else {
-    console.log(`No subscribers found for event ${eventId}.`);
+    logger.log(`No subscribers found for event ${eventId}.`);
     res.status(200).json({ message: `No subscribers for event ${eventId}.` });
   }
 });
 
-server.listen(SERVICE_PORT,async () => {
-  console.log(`Listening on port ${SERVICE_PORT}`);
+server.listen(SERVICE_PORT, async () => {
+  logger.log(`Listening on port ${SERVICE_PORT}`);
   await registerService();
 });
-

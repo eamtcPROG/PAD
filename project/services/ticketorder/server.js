@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 // const axios = require('axios');
 const httpClient = require('./httpclient');
 const process = require('process');
+const logger = require('./logger');
 
 const mongoURI = process.env.MONGO_URI || process.env.MONGO_URL;
 
@@ -13,7 +14,7 @@ const SERVICE_ADDRESS = `${process.env.SERVICE_ADDRESS}:${SERVICE_PORT}` || `htt
 
 const registerService = async () => {
   try {
-    console.log("Service address",SERVICE_ADDRESS)
+    logger.log("Service address",SERVICE_ADDRESS)
     const response = await httpClient({
       method: 'post',
       url: `${SERVICE_DISCOVERY_URL}/register`,
@@ -26,9 +27,9 @@ const registerService = async () => {
     //   ServiceName: SERVICE_NAME,
     //   Address: SERVICE_ADDRESS,
     // });
-    console.log(`Service registered successfully: ${response.data}`);
+    logger.log(`Service registered successfully: ${response.data}`);
   } catch (error) {
-    console.error('Error registering service:', error.message);
+    logger.error('Error registering service:', error.message);
   }
 };
 
@@ -49,9 +50,9 @@ const deregisterService = async () => {
     //     Address: SERVICE_ADDRESS,
     //   },
     // });
-    console.log(`Service deregistered successfully: ${response.data}`);
+    logger.log(`Service deregistered successfully: ${response.data}`);
   } catch (error) {
-    console.error('Error deregistering service:', error.message);
+    logger.error('Error deregistering service:', error.message);
   }
 };
 
@@ -61,18 +62,18 @@ mongoose
     useUnifiedTopology: true,
   })
   .then(async () => {
-    console.log("Connected to MongoDB");
+    logger.log("Connected to MongoDB");
     
     await registerService();
     app.listen(SERVICE_PORT, () => {
-      console.log(`Listening on port ${SERVICE_PORT}`);
+      logger.log(`Listening on port ${SERVICE_PORT}`);
     });
 
     const gracefulShutdown = async () => {
-      console.log('Shutting down gracefully...');
+      logger.log('Shutting down gracefully...');
       await deregisterService();
       server.close(() => {
-        console.log('Server closed');
+        logger.log('Server closed');
         process.exit(0);
       });
     };
@@ -82,6 +83,6 @@ mongoose
     process.on('SIGTERM', gracefulShutdown);
   })
   .catch((err) => {
-    console.error("MongoDB connection error:", err);
+    logger.error("MongoDB connection error:", err);
     process.exit(1);
   });
