@@ -3,7 +3,7 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 // const axios = require("axios");
 const { Order, Payment } = require("./models");
-const redis = require("redis");
+const Redis = require("ioredis");
 const os = require("os");
 const httpClient = require("./httpclient");
 const logger = require("./logger");
@@ -13,10 +13,17 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
-// Redis Client Initialization
-const redisClient = redis.createClient({
-  url: "redis://redis:6379",
-});
+const redisClient = new Redis.Cluster([
+  { host: "redis1", port: 6379 },
+  { host: "redis2", port: 6379 },
+  { host: "redis3", port: 6379 },
+  { host: "redis4", port: 6379 },
+  { host: "redis5", port: 6379 },
+  { host: "redis6", port: 6379 },
+  { host: "redis7", port: 6379 },
+  { host: "redis8", port: 6379 },
+  { host: "redis9", port: 6379 },
+]);
 
 redisClient.on("error", (err) => {
   logger.error("Redis connection error:", err);
@@ -26,9 +33,9 @@ redisClient.on("connect", () => {
   logger.log(`Connected to Redis`);
 });
 
-redisClient.connect().catch((err) => {
-  logger.error("Error connecting to Redis:", err);
-});
+// redisClient.connect().catch((err) => {
+//   logger.error("Error connecting to Redis:", err);
+// });
 
 process.on("SIGINT", () => {
   redisClient.quit();
@@ -128,9 +135,8 @@ app.post("/order", async (req, res, next) => {
 
     // Invalidate the cache
     await redisClient.del("orders"); // Remove cached list of orders
-    await redisClient.setEx(
+    await redisClient.set(
       `order:${newOrder._id}`,
-      3600,
       JSON.stringify(newOrder.toObject()) // Convert to plain object
     ); // Cache the new order
 
@@ -151,7 +157,7 @@ app.get("/order", async (req, res, next) => {
     } else {
       const orders = await Order.find().lean(); // Await and use lean()
 
-      await redisClient.setEx("orders", 3600, JSON.stringify(orders)); // Now safe to stringify
+      await redisClient.set("orders", JSON.stringify(orders)); // Now safe to stringify
       res.json(orders);
     }
   } catch (err) {
@@ -188,7 +194,7 @@ app.get("/order/:id", async (req, res, next) => {
       if (!order) {
         return res.status(404).json({ message: "Order not found" });
       }
-      await redisClient.setEx(`order:${id}`, 3600, JSON.stringify(order)); // Safe to stringify
+      await redisClient.set(`order:${id}`, JSON.stringify(order)); // Safe to stringify
       res.json(order);
     }
   } catch (err) {
@@ -225,9 +231,9 @@ app.post("/order/create-with-user", async (req, res, next) => {
 
     // Invalidate the cache
     await redisClient.del("orders");
-    await redisClient.setEx(
+    await redisClient.set(
       `order:${newOrder._id}`,
-      3600,
+
       JSON.stringify(newOrder.toObject()) // Convert to plain object
     );
 

@@ -5,7 +5,7 @@ services:
       - '4000'
     depends_on:
       - mongo
-      - redis
+      - redis-cluster
       - servicediscovery
     environment:
       MONGO_URI: mongodb://root:password@mongo:27017/ticketorderdb?authSource=admin
@@ -189,13 +189,118 @@ services:
     networks:
       - app-network
 
+  redis1:
+    image: redis:7.0-alpine
+    command: redis-server --cluster-enabled yes --appendonly yes
+    # volumes:
+    #   - redis1-data:/data
+    ports:
+      - "7001:6379"
+    networks:
+      - app-network
 
+  redis2:
+    image: redis:7.0-alpine
+    command: redis-server --cluster-enabled yes --appendonly yes
+    # volumes:
+    #   - redis2-data:/data
+    networks:
+      - app-network
+
+  redis3:
+    image: redis:7.0-alpine
+    command: redis-server --cluster-enabled yes --appendonly yes
+    # volumes:
+    #   - redis3-data:/data
+    networks:
+      - app-network
+
+  redis4:
+    image: redis:7.0-alpine
+    command: redis-server --cluster-enabled yes --appendonly yes
+    # volumes:
+    #   - redis4-data:/data
+    networks:
+      - app-network
+
+  redis5:
+    image: redis:7.0-alpine
+    command: redis-server --cluster-enabled yes --appendonly yes
+    # volumes:
+    #   - redis5-data:/data
+    networks:
+      - app-network
+
+  redis6:
+    image: redis:7.0-alpine
+    command: redis-server --cluster-enabled yes --appendonly yes
+    # volumes:
+    #   - redis6-data:/data
+    networks:
+      - app-network
+
+  redis7:
+    image: redis:7.0-alpine
+    command: redis-server --cluster-enabled yes --appendonly yes
+    # volumes:
+    #   - redis7-data:/data
+    networks:
+      - app-network
+
+  redis8:
+    image: redis:7.0-alpine
+    command: redis-server --cluster-enabled yes --appendonly yes
+    # volumes:
+    #   - redis8-data:/data
+    networks:
+      - app-network
+
+  redis9:
+    image: redis:7.0-alpine
+    command: redis-server --cluster-enabled yes --appendonly yes
+    # volumes:
+    #   - redis9-data:/data
+    networks:
+      - app-network
+
+  redis-cluster:
+    image: redis:7.0-alpine
+    depends_on:
+      - redis1
+      - redis2
+      - redis3
+      - redis4
+      - redis5
+      - redis6
+      - redis7
+      - redis8
+      - redis9
+    command: >
+      sh -c 'echo "Waiting for Redis nodes to be up...";
+      sleep 10;
+      echo "Creating cluster...";
+      redis-cli --cluster create
+      redis1:6379 redis2:6379 redis3:6379
+      redis4:6379 redis5:6379 redis6:6379
+      redis7:6379 redis8:6379 redis9:6379
+      --cluster-replicas 2 --cluster-yes;'
+    networks:
+      - app-network
 
 
 volumes:
   mongo-data:
   postgres-data:
   esdata:
+  # redis1-data:
+  # redis2-data:
+  # redis3-data:
+  # redis4-data:
+  # redis5-data:
+  # redis6-data:
+  # redis7-data:
+  # redis8-data:
+  # redis9-data:
 
 networks:
   app-network:
