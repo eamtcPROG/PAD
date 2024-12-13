@@ -13,26 +13,36 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
-const redisClient = new Redis.Cluster([
-  { host: "redis1", port: 6379 },
-  { host: "redis2", port: 6379 },
-  { host: "redis3", port: 6379 },
-  { host: "redis4", port: 6379 },
-  { host: "redis5", port: 6379 },
-  { host: "redis6", port: 6379 },
-  { host: "redis7", port: 6379 },
-  { host: "redis8", port: 6379 },
-  { host: "redis9", port: 6379 },
-]);
+const redisClient = new Redis.Cluster(
+  [
+    { host: 'redis1', port: 7001 },
+    { host: 'redis2', port: 7002 },
+    { host: 'redis3', port: 7003 },
+  ],
+  {
+    scaleReads: 'all',
+  }
+);
 
-redisClient.on("error", (err) => {
-  logger.error("Redis connection error:", err);
-});
+// redisClient.on('connect', () => {
+//   console.log('Successfully connected to Redis');
+// });
 
-redisClient.on("connect", () => {
-  logger.log(`Connected to Redis`);
-});
+redisClient.connect().then(()=>{
+  logger.log('Redis connected')
+}).catch((e)=>{
+  logger.error('Error redis ',e);
+})
 
+
+
+// redisClient.on('reconnecting', (delay) => {
+//   console.log(`Reconnecting to Redis, delay: ${delay} ms`);
+// });
+
+// redisClient.on('error', (err) => {
+//   console.error('Redis connection error:', err);
+// });
 // redisClient.connect().catch((err) => {
 //   logger.error("Error connecting to Redis:", err);
 // });
@@ -139,7 +149,7 @@ app.post("/order", async (req, res, next) => {
       `order:${newOrder._id}`,
       JSON.stringify(newOrder.toObject()) // Convert to plain object
     ); // Cache the new order
-
+    
     res.status(201).json(newOrder);
   } catch (err) {
     next(err); // Correct variable name
@@ -153,11 +163,14 @@ app.get("/order", async (req, res, next) => {
     const cachedOrders = await redisClient.get("orders");
 
     if (cachedOrders) {
+      console.log("From redis")
       return res.json(JSON.parse(cachedOrders));
     } else {
-      const orders = await Order.find().lean(); // Await and use lean()
+      const orders = await Order.find().lean(); 
 
-      await redisClient.set("orders", JSON.stringify(orders)); // Now safe to stringify
+      await redisClient.set("orders", JSON.stringify(orders)); 
+
+      console.log("From database")
       res.json(orders);
     }
   } catch (err) {

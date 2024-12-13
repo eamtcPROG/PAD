@@ -19,6 +19,7 @@ services:
       - "port=4000"
     networks:
       - app-network
+      - redis_cluster
     deploy:
       restart_policy:
         condition: on-failure
@@ -43,6 +44,7 @@ services:
       - "port=4010"
     networks:
       - app-network
+      - redis_cluster
     deploy:
       restart_policy:
         condition: on-failure
@@ -67,6 +69,7 @@ services:
       - "port=4020"
     networks:
       - app-network
+      - redis_cluster
     deploy:
       restart_policy:
         condition: on-failure
@@ -248,91 +251,118 @@ services:
       - app-network
 
   redis1:
-    image: redis:7.0-alpine
+    image: redis:6.2-alpine
     container_name: redis1
-    command: redis-server --cluster-enabled yes --appendonly yes
-    # volumes:
-    #   - redis1-data:/data
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redisconf/redis1.conf:/usr/local/etc/redis/redis.conf
     ports:
-      - "7001:6379"
+      - "7001:7001"
     networks:
       - app-network
+    hostname: redis1
 
   redis2:
-    image: redis:7.0-alpine
+    image: redis:6.2-alpine
     container_name: redis2
-    command: redis-server --cluster-enabled yes --appendonly yes
-    # volumes:
-    #   - redis2-data:/data
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redisconf/redis2.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "7002:7002"
     networks:
       - app-network
+    hostname: redis2
 
   redis3:
-    image: redis:7.0-alpine
+    image: redis:6.2-alpine
     container_name: redis3
-    command: redis-server --cluster-enabled yes --appendonly yes
-    # volumes:
-    #   - redis3-data:/data
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redisconf/redis3.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "7003:7003"
     networks:
       - app-network
+    hostname: redis3
 
   redis4:
-    image: redis:7.0-alpine
+    image: redis:6.2-alpine
     container_name: redis4
-    command: redis-server --cluster-enabled yes --appendonly yes
-    # volumes:
-    #   - redis4-data:/data
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redisconf/redis4.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "7004:7004"
     networks:
       - app-network
+    hostname: redis4
 
   redis5:
-    image: redis:7.0-alpine
+    image: redis:6.2-alpine
     container_name: redis5
-    command: redis-server --cluster-enabled yes --appendonly yes
-    # volumes:
-    #   - redis5-data:/data
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redisconf/redis5.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "7005:7005"
     networks:
       - app-network
+    hostname: redis5
 
   redis6:
-    image: redis:7.0-alpine
+    image: redis:6.2-alpine
     container_name: redis6
-    command: redis-server --cluster-enabled yes --appendonly yes
-    # volumes:
-    #   - redis6-data:/data
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redisconf/redis6.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "7006:7006"
     networks:
       - app-network
+    hostname: redis6
 
   redis7:
-    image: redis:7.0-alpine
+    image: redis:6.2-alpine
     container_name: redis7
-    command: redis-server --cluster-enabled yes --appendonly yes
-    # volumes:
-    #   - redis7-data:/data
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redisconf/redis7.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "7007:7007"
     networks:
       - app-network
+    hostname: redis7
 
   redis8:
-    image: redis:7.0-alpine
+    image: redis:6.2-alpine
     container_name: redis8
-    command: redis-server --cluster-enabled yes --appendonly yes
-    # volumes:
-    #   - redis8-data:/data
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redisconf/redis8.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "7008:7008"
     networks:
       - app-network
+    hostname: redis8
 
   redis9:
-    image: redis:7.0-alpine
+    image: redis:6.2-alpine
     container_name: redis9
-    command: redis-server --cluster-enabled yes --appendonly yes
-    # volumes:
-    #   - redis9-data:/data
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redisconf/redis9.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "7009:7009"
     networks:
       - app-network
+    hostname: redis9
 
   redis-cluster:
-    image: redis:7.0-alpine
+    image: redis:latest
     container_name: redis-cluster
+    ports:
+      - "6999:6999"
     depends_on:
       - redis1
       - redis2
@@ -343,15 +373,7 @@ services:
       - redis7
       - redis8
       - redis9
-    command: >
-      sh -c 'echo "Waiting for Redis nodes to be up...";
-      sleep 10;
-      echo "Creating cluster...";
-      redis-cli --cluster create
-      redis1:6379 redis2:6379 redis3:6379
-      redis4:6379 redis5:6379 redis6:6379
-      redis7:6379 redis8:6379 redis9:6379
-      --cluster-replicas 2 --cluster-yes;'
+    command: redis-cli -p 7000 --cluster create redis1:7001 redis2:7002 redis3:7003 redis4:7004 redis5:7005 redis6:7006 redis7:7007 redis8:7008 redis9:7009 --cluster-replicas 2 --cluster-yes
     networks:
       - app-network
 
@@ -372,4 +394,6 @@ volumes:
 
 networks:
   app-network:
+    driver: bridge
+  redis_cluster:
     driver: bridge
