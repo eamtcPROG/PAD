@@ -7,12 +7,17 @@ using System.Linq;
 
 namespace ServiceDiscovery
 {
+    public class ServiceEntry
+{
+    public string Key { get; set; } = string.Empty;
+    public string Address { get; set; } = string.Empty;
+}
     public interface IServiceRepository
     {
         Task RegisterServiceAsync(ServiceInstance instance);
         Task DeregisterServiceAsync(ServiceInstance instance);
         Task<string?> GetServiceAsync(string serviceName);
-        Task<IEnumerable<string>> GetAllServicesAsync(string serviceName);
+        Task<IEnumerable<ServiceEntry>> GetAllServicesAsync(string serviceName);
     }
 
     public class ServiceRepository : IServiceRepository
@@ -102,17 +107,21 @@ namespace ServiceDiscovery
             return selectedService;
         }
 
-        public async Task<IEnumerable<string>> GetAllServicesAsync(string serviceName)
-        {
-            string key = GetServiceKey(serviceName);
-            var entries = await _db.HashGetAllAsync(key);
+        public async Task<IEnumerable<ServiceEntry>> GetAllServicesAsync(string serviceName)
+{
+    string key = GetServiceKey(serviceName);
+    var entries = await _db.HashGetAllAsync(key);
 
-            foreach (var entry in entries)
-            {
-                _logger.LogInformation($"[{DateTime.UtcNow:O}] [INFO] [servicediscovery] Service: {entry.Value}");
-            }
+    foreach (var entry in entries)
+    {
+        _logger.LogInformation($"[{DateTime.UtcNow:O}] [INFO] [servicediscovery] Service: {entry.Value}");
+    }
 
-            return entries.Select(entry => entry.Value.ToString()).ToList();
-        }
+    return entries.Select(entry => new ServiceEntry
+    {
+        Key = entry.Name.ToString(),
+        Address = entry.Value.ToString()
+    }).ToList();
+}
     }
 }

@@ -11,7 +11,7 @@ const SERVICE_DISCOVERY_URL = process.env.SERVICE_DISCOVERY_URL || 'http://servi
 const SERVICE_NAME = process.env.SERVICE_NAME || 'ticketorder';
 const SERVICE_PORT = process.env.SERVICE_PORT || 4000;
 const SERVICE_ADDRESS = `${process.env.SERVICE_ADDRESS}:${SERVICE_PORT}` || `http://ticketorder:${SERVICE_PORT}`;
-
+// console.log("SERVICE_ADDRESS",process.env.SERVICE_NAME,process.env.SERVICE_PORT,process.env.SERVICE_ADDRESS,SERVICE_ADDRESS)
 const registerService = async () => {
   try {
     logger.log("Service address",SERVICE_ADDRESS)

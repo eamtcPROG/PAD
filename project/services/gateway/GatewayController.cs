@@ -9,6 +9,8 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Http;
 using System.IO;
 using System.Net.Http.Headers;
+using StackExchange.Redis;
+using System.Text.Json;
 using System.Collections.Generic;
 
 namespace Gateway.Controllers
@@ -21,21 +23,23 @@ namespace Gateway.Controllers
         private readonly string _serviceDiscoveryUrl;
         private readonly ConcurrentDictionary<string, CircuitBreakerState> _circuitBreakerStates = new ConcurrentDictionary<string, CircuitBreakerState>();
 
+        private readonly IDatabase _redisDb;
+
         private const int FailureThreshold = 1;
         private const int MaxRetriesPerInstance = 3;
-        private const int OpenStateDuration = 15; // seconds
+        private const int OpenStateDuration = 180; // seconds
 
-        public GatewayController(IHttpClientFactory httpClientFactory, IConfiguration configuration)
+        public GatewayController(IHttpClientFactory httpClientFactory, IConfiguration configuration,IConnectionMultiplexer redis)
         {
             _httpClientFactory = httpClientFactory;
             _serviceDiscoveryUrl = configuration["ServiceDiscovery:Url"]
                                     ?? throw new ArgumentNullException("ServiceDiscovery:Url");
+            _redisDb = redis.GetDatabase();
         }
 
         [HttpGet, HttpPost, HttpPut, HttpDelete, HttpPatch]
         public async Task<IActionResult> HandleRequest(string serviceName, string catchAll)
         {
-            // Fetch the service addresses from Service Discovery
             var client = _httpClientFactory.CreateClient();
             var response = await client.GetAsync($"{_serviceDiscoveryUrl}service/{serviceName}");
 
@@ -44,108 +48,107 @@ namespace Gateway.Controllers
                 return NotFound($"Service '{serviceName}' not found.");
             }
 
-            // Deserialize the response as an array of strings
-            var serviceAddresses = await response.Content.ReadFromJsonAsync<string[]>();
+            var serviceEntries = await response.Content.ReadFromJsonAsync<ServiceEntry[]>();
 
-            if (serviceAddresses == null || serviceAddresses.Length == 0)
+            if (serviceEntries == null || serviceEntries.Length == 0)
             {
                 return NotFound($"No instances found for service '{serviceName}'.");
             }
 
             var now = DateTime.UtcNow;
 
-            // Get circuit breaker state for the service
-            var cbState = _circuitBreakerStates.GetOrAdd(serviceName, new CircuitBreakerState
-            {
-                Status = CircuitBreakerStatus.Closed,
-                FailureCount = 0,
-                LastStateChangedTime = now
-            });
+            var availableServices = serviceEntries
+                .Where(entry =>
+                {
+                    var instanceCbState = GetCircuitBreakerState(entry.Address);
 
-            if (cbState.Status == CircuitBreakerStatus.Open)
+                    lock (instanceCbState)
+                    {
+                        if (instanceCbState.Status == CircuitBreakerStatus.Open)
+                        {
+                            var timeSinceLastChange = (now - instanceCbState.LastStateChangedTime).TotalSeconds;
+                            if (timeSinceLastChange >= OpenStateDuration)
+                            {
+                                instanceCbState.Status = CircuitBreakerStatus.HalfOpen;
+                                instanceCbState.LastStateChangedTime = now;
+                                Console.WriteLine($"Instance {entry.Address} moved to Half-Open state.");
+                            }
+                            else
+                            {
+                                return false;
+                            }
+                        }
+                        return true;
+                    }
+                })
+                .OrderBy(_ => Guid.NewGuid())
+                .ToList();
+
+            if (availableServices.Count == 0)
             {
-                // Check if the open duration has passed
-                if ((now - cbState.LastStateChangedTime).TotalSeconds >= OpenStateDuration)
-                {
-                    // Move to Half-Open
-                    cbState.Status = CircuitBreakerStatus.HalfOpen;
-                    cbState.LastStateChangedTime = now;
-                    Console.WriteLine($"Circuit breaker for service '{serviceName}' moved to Half-Open state.");
-                }
-                else
-                {
-                    // Still in Open state
-                    return StatusCode(503, $"Circuit breaker is open for service '{serviceName}'.");
-                }
+                return StatusCode(503, "All instances are unavailable.");
             }
 
-            // Randomize the service addresses
-            var availableServices = serviceAddresses.OrderBy(s => Guid.NewGuid()).ToList();
-
-            // Enable buffering to allow multiple reads of the request body
             Request.EnableBuffering();
 
             using var memoryStream = new MemoryStream();
             await Request.Body.CopyToAsync(memoryStream);
             memoryStream.Position = 0;
 
-            // Store the content for reuse
             var requestContent = memoryStream.ToArray();
-
-            // Reset the position of the request body
             Request.Body.Position = 0;
 
             foreach (var selectedService in availableServices)
             {
-                Console.WriteLine($"Trying to forward request to service '{serviceName}' instance at {selectedService}.");
+                var instanceAddress = selectedService.Address;
+                var instanceCbState = GetCircuitBreakerState(instanceAddress);
 
                 for (int attempt = 1; attempt <= MaxRetriesPerInstance; attempt++)
                 {
-                    var result = await ForwardRequestToService(selectedService, catchAll, requestContent);
+
+                    lock (instanceCbState)
+                    {
+                        if (instanceCbState.Status == CircuitBreakerStatus.Open)
+                        {
+                            var timeSinceLastChange = (now - instanceCbState.LastStateChangedTime).TotalSeconds;
+                            if (timeSinceLastChange >= OpenStateDuration)
+                            {
+                                instanceCbState.Status = CircuitBreakerStatus.HalfOpen;
+                                instanceCbState.LastStateChangedTime = now;
+                                Console.WriteLine($"Instance {instanceAddress} moved to Half-Open state.");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"Instance {instanceAddress} is in Open state. Skipping.");
+                                continue;
+                            }
+                        }
+                    }
+                    Console.WriteLine($"Forwarding request to {instanceAddress} (attempt {attempt})");
+                    var result = await ForwardRequestToService(instanceAddress, catchAll, requestContent);
 
                     if (result != null)
                     {
-                        // Successful request
-                        if (cbState.Status == CircuitBreakerStatus.HalfOpen || cbState.Status == CircuitBreakerStatus.Open)
-                        {
-                            ResetCircuitBreaker(serviceName);
-                        }
+                        ResetCircuitBreaker(instanceAddress);
                         return result;
                     }
                     else
                     {
-                        Console.WriteLine($"Attempt {attempt} failed for service '{serviceName}' instance at {selectedService}.");
-
-                        if (attempt == MaxRetriesPerInstance)
-                        {
-                            // After MaxRetriesPerInstance, move on to next service instance
-                            Console.WriteLine($"Moving to next service instance after {MaxRetriesPerInstance} attempts.");
-                        }
+                        HandleFailure(instanceAddress);
                     }
                 }
-            }
 
-            // After all service instances have been tried and failed
-            // Increment failure count for the service
-            HandleFailure(serviceName);
 
-            // Check if failure count reaches threshold
-            if (_circuitBreakerStates[serviceName].FailureCount >= FailureThreshold)
-            {
-                cbState.Status = CircuitBreakerStatus.Open;
-                cbState.LastStateChangedTime = DateTime.UtcNow;
-                Console.WriteLine($"Circuit breaker for service '{serviceName}' opened.");
             }
 
             return StatusCode(503, "Service unavailable.");
         }
 
-        private async Task<IActionResult?> ForwardRequestToService(string selectedService, string catchAll, byte[] requestContent)
+        private async Task<IActionResult?> ForwardRequestToService(string selectedServiceAddress, string catchAll, byte[] requestContent)
         {
             try
             {
-                // Build the target URL
-                var targetUrl = $"{selectedService}/{catchAll}{Request.QueryString}";
+                var targetUrl = $"{selectedServiceAddress}/{catchAll}{Request.QueryString}";
 
                 var client = _httpClientFactory.CreateClient();
 
@@ -173,90 +176,93 @@ namespace Gateway.Controllers
 
                 if ((int)forwardResponse.StatusCode >= 500)
                 {
-                    Console.WriteLine($"Server error {forwardResponse.StatusCode} for service {selectedService}");
-                    // Server error
                     return null;
                 }
-                else
+
+                foreach (var header in forwardResponse.Headers)
                 {
-                    // Success
-                    foreach (var header in forwardResponse.Headers)
-                    {
-                        Response.Headers[header.Key] = header.Value.ToArray();
-                    }
-
-                    foreach (var header in forwardResponse.Content.Headers)
-                    {
-                        Response.Headers[header.Key] = header.Value.ToArray();
-                    }
-
-                    Response.StatusCode = (int)forwardResponse.StatusCode;
-                    var responseContent = await forwardResponse.Content.ReadAsByteArrayAsync();
-                    return File(responseContent, forwardResponse.Content.Headers.ContentType?.ToString() ?? "application/octet-stream");
+                    Response.Headers[header.Key] = header.Value.ToArray();
                 }
+
+                foreach (var header in forwardResponse.Content.Headers)
+                {
+                    Response.Headers[header.Key] = header.Value.ToArray();
+                }
+
+                Response.StatusCode = (int)forwardResponse.StatusCode;
+                var responseContent = await forwardResponse.Content.ReadAsByteArrayAsync();
+                return File(responseContent, forwardResponse.Content.Headers.ContentType?.ToString() ?? "application/octet-stream");
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                // Log exception
-                Console.WriteLine($"Error forwarding request to {selectedService}: {ex.Message}");
                 return null;
             }
         }
 
-        private void HandleFailure(string serviceName)
+        private void HandleFailure(string instanceAddress)
         {
-            var now = DateTime.UtcNow;
+            var instanceCbState = GetCircuitBreakerState(instanceAddress);
 
-            var cbState = _circuitBreakerStates.GetOrAdd(serviceName, new CircuitBreakerState
+            lock (instanceCbState)
             {
-                Status = CircuitBreakerStatus.Closed,
-                FailureCount = 0,
-                LastStateChangedTime = now
-            });
+                instanceCbState.FailureCount++;
 
-            cbState.FailureCount++;
-
-            Console.WriteLine($"Failure count for service '{serviceName}': {cbState.FailureCount}");
-
-            if (cbState.Status == CircuitBreakerStatus.HalfOpen || cbState.Status == CircuitBreakerStatus.Closed)
-            {
-                if (cbState.FailureCount >= FailureThreshold)
+                if (instanceCbState.FailureCount >= FailureThreshold)
                 {
-                    cbState.Status = CircuitBreakerStatus.Open;
-                    cbState.LastStateChangedTime = now;
-                    Console.WriteLine($"Circuit breaker for service '{serviceName}' tripped to Open state.");
+                    instanceCbState.Status = CircuitBreakerStatus.Open;
+                    instanceCbState.LastStateChangedTime = DateTime.UtcNow;
                 }
+                SetCircuitBreakerState(instanceAddress, instanceCbState);
             }
-            else if (cbState.Status == CircuitBreakerStatus.HalfOpen)
-            {
-                // Failure in Half-Open state, trip back to Open
-                cbState.Status = CircuitBreakerStatus.Open;
-                cbState.LastStateChangedTime = now;
-                cbState.FailureCount = 0;
-                Console.WriteLine($"Circuit breaker for service '{serviceName}' returned to Open state from Half-Open.");
-            }
+            Console.WriteLine($"Instance {instanceAddress} moved to Open state.");
         }
 
-        private void ResetCircuitBreaker(string serviceName)
+        private void ResetCircuitBreaker(string instanceAddress)
         {
-            var cbState = _circuitBreakerStates.GetOrAdd(serviceName, new CircuitBreakerState
-            {
-                Status = CircuitBreakerStatus.Closed,
-                FailureCount = 0,
-                LastStateChangedTime = DateTime.UtcNow
-            });
+            var instanceCbState = GetCircuitBreakerState(instanceAddress);
 
-            cbState.Status = CircuitBreakerStatus.Closed;
-            cbState.FailureCount = 0;
-            cbState.LastStateChangedTime = DateTime.UtcNow;
-            Console.WriteLine($"Circuit breaker for service '{serviceName}' reset to Closed state.");
+            lock (instanceCbState)
+            {
+                instanceCbState.Status = CircuitBreakerStatus.Closed;
+                instanceCbState.FailureCount = 0;
+                instanceCbState.LastStateChangedTime = DateTime.UtcNow;
+
+                SetCircuitBreakerState(instanceAddress, instanceCbState);
+            }            
+        }
+
+        private CircuitBreakerState GetCircuitBreakerState(string instanceAddress)
+        {
+            if (_circuitBreakerStates.TryGetValue(instanceAddress, out var state))
+            {
+                return state;
+            }
+
+            var redisValue = _redisDb.StringGet(instanceAddress);
+            if (redisValue.HasValue)
+            {
+                state = JsonSerializer.Deserialize<CircuitBreakerState>(redisValue);
+                _circuitBreakerStates[instanceAddress] = state;
+                return state;
+            }
+
+            state = new CircuitBreakerState();
+            _circuitBreakerStates[instanceAddress] = state;
+            return state;
+        }
+
+        private void SetCircuitBreakerState(string instanceAddress, CircuitBreakerState state)
+        {
+            _circuitBreakerStates[instanceAddress] = state;
+            var serializedState = JsonSerializer.Serialize(state);
+            _redisDb.StringSet(instanceAddress, serializedState);
         }
 
         private class CircuitBreakerState
         {
             public int FailureCount { get; set; }
-            public CircuitBreakerStatus Status { get; set; }
-            public DateTime LastStateChangedTime { get; set; }
+            public CircuitBreakerStatus Status { get; set; } = CircuitBreakerStatus.Closed;
+            public DateTime LastStateChangedTime { get; set; } = DateTime.UtcNow;
         }
 
         private enum CircuitBreakerStatus
@@ -264,6 +270,12 @@ namespace Gateway.Controllers
             Closed,
             Open,
             HalfOpen
+        }
+
+        public class ServiceEntry
+        {
+            public string Key { get; set; } = string.Empty;
+            public string Address { get; set; } = string.Empty;
         }
     }
 }

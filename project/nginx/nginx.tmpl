@@ -1,34 +1,24 @@
-# nginx/nginx.tmpl
-
 {{/* Get all running containers */}}
 {{ $containers := where . "State.Running" true }}
 
 {{/* Group containers by service */}}
 {{ $services := groupBy $containers "Labels.com.docker.compose.service" }}
 
-{{/* Start of HTTP context (assumed since included in http block) */}}
-
 {{ range $service := $services }}
 {{ $serviceName := $service.key }}
 {{ $containers := $service.value }}
-{{ if or (eq $serviceName "user") (eq $serviceName "ticketorder") }}
 upstream {{ $serviceName }}_service {
-    {{ range $index, $container := $containers }}
+    {{ range $container := $containers }}
     server {{ $container.Name }}:{{ index $container.Labels "port" }};
     {{ end }}
 }
 {{ end }}
-{{ end }}
-
-upstream gateway_service {
-    server gateway:80;
-}
 
 server {
     listen 80;
 
     location / {
-        proxy_pass http://gateway;
+        proxy_pass http://gateway_service;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection keep-alive;
@@ -38,7 +28,7 @@ server {
 
     {{ if index $services "user" }}
     location /user/ {
-        proxy_pass http://user/;
+        proxy_pass http://user_service;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection keep-alive;
@@ -49,7 +39,7 @@ server {
 
     {{ if index $services "ticketorder" }}
     location /ticketorder/ {
-        proxy_pass http://ticketorder/;
+        proxy_pass http://ticketorder_service;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection keep-alive;
