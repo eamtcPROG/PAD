@@ -1,17 +1,17 @@
-using Microsoft.AspNetCore.Mvc;
-using System.Net.Http;
-using System.Threading.Tasks;
-using System.Collections.Concurrent;
-using System.Linq;
-using Microsoft.Extensions.Configuration;
 using System;
-using System.Net.Http.Json;
-using Microsoft.AspNetCore.Http;
-using System.IO;
-using System.Net.Http.Headers;
-using StackExchange.Redis;
-using System.Text.Json;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using StackExchange.Redis;
 
 namespace Gateway.Controllers
 {
@@ -21,7 +21,8 @@ namespace Gateway.Controllers
     {
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly string _serviceDiscoveryUrl;
-        private readonly ConcurrentDictionary<string, CircuitBreakerState> _circuitBreakerStates = new ConcurrentDictionary<string, CircuitBreakerState>();
+        private readonly ConcurrentDictionary<string, CircuitBreakerState> _circuitBreakerStates =
+            new ConcurrentDictionary<string, CircuitBreakerState>();
 
         private readonly IDatabase _redisDb;
 
@@ -29,11 +30,16 @@ namespace Gateway.Controllers
         private const int MaxRetriesPerInstance = 3;
         private const int OpenStateDuration = 180; // seconds
 
-        public GatewayController(IHttpClientFactory httpClientFactory, IConfiguration configuration,IConnectionMultiplexer redis)
+        public GatewayController(
+            IHttpClientFactory httpClientFactory,
+            IConfiguration configuration,
+            IConnectionMultiplexer redis
+        )
         {
             _httpClientFactory = httpClientFactory;
-            _serviceDiscoveryUrl = configuration["ServiceDiscovery:Url"]
-                                    ?? throw new ArgumentNullException("ServiceDiscovery:Url");
+            _serviceDiscoveryUrl =
+                configuration["ServiceDiscovery:Url"]
+                ?? throw new ArgumentNullException("ServiceDiscovery:Url");
             _redisDb = redis.GetDatabase();
         }
 
@@ -66,12 +72,16 @@ namespace Gateway.Controllers
                     {
                         if (instanceCbState.Status == CircuitBreakerStatus.Open)
                         {
-                            var timeSinceLastChange = (now - instanceCbState.LastStateChangedTime).TotalSeconds;
+                            var timeSinceLastChange = (
+                                now - instanceCbState.LastStateChangedTime
+                            ).TotalSeconds;
                             if (timeSinceLastChange >= OpenStateDuration)
                             {
                                 instanceCbState.Status = CircuitBreakerStatus.HalfOpen;
                                 instanceCbState.LastStateChangedTime = now;
-                                Console.WriteLine($"Instance {entry.Address} moved to Half-Open state.");
+                                Console.WriteLine(
+                                    $"Instance {entry.Address} moved to Half-Open state."
+                                );
                             }
                             else
                             {
@@ -105,27 +115,38 @@ namespace Gateway.Controllers
 
                 for (int attempt = 1; attempt <= MaxRetriesPerInstance; attempt++)
                 {
-
                     lock (instanceCbState)
                     {
                         if (instanceCbState.Status == CircuitBreakerStatus.Open)
                         {
-                            var timeSinceLastChange = (now - instanceCbState.LastStateChangedTime).TotalSeconds;
+                            var timeSinceLastChange = (
+                                now - instanceCbState.LastStateChangedTime
+                            ).TotalSeconds;
                             if (timeSinceLastChange >= OpenStateDuration)
                             {
                                 instanceCbState.Status = CircuitBreakerStatus.HalfOpen;
                                 instanceCbState.LastStateChangedTime = now;
-                                Console.WriteLine($"Instance {instanceAddress} moved to Half-Open state.");
+                                Console.WriteLine(
+                                    $"Instance {instanceAddress} moved to Half-Open state."
+                                );
                             }
                             else
                             {
-                                Console.WriteLine($"Instance {instanceAddress} is in Open state. Skipping.");
+                                Console.WriteLine(
+                                    $"Instance {instanceAddress} is in Open state. Skipping."
+                                );
                                 continue;
                             }
                         }
                     }
-                    Console.WriteLine($"Forwarding request to {instanceAddress} (attempt {attempt})");
-                    var result = await ForwardRequestToService(instanceAddress, catchAll, requestContent);
+                    Console.WriteLine(
+                        $"Forwarding request to {instanceAddress} (attempt {attempt})"
+                    );
+                    var result = await ForwardRequestToService(
+                        instanceAddress,
+                        catchAll,
+                        requestContent
+                    );
 
                     if (result != null)
                     {
@@ -137,14 +158,16 @@ namespace Gateway.Controllers
                         HandleFailure(instanceAddress);
                     }
                 }
-
-
             }
 
             return StatusCode(503, "Service unavailable.");
         }
 
-        private async Task<IActionResult?> ForwardRequestToService(string selectedServiceAddress, string catchAll, byte[] requestContent)
+        private async Task<IActionResult?> ForwardRequestToService(
+            string selectedServiceAddress,
+            string catchAll,
+            byte[] requestContent
+        )
         {
             try
             {
@@ -155,21 +178,29 @@ namespace Gateway.Controllers
                 var forwardRequest = new HttpRequestMessage
                 {
                     Method = new HttpMethod(Request.Method),
-                    RequestUri = new Uri(targetUrl)
+                    RequestUri = new Uri(targetUrl),
                 };
 
-                if (Request.Method != HttpMethod.Get.Method && Request.Method != HttpMethod.Delete.Method)
+                if (
+                    Request.Method != HttpMethod.Get.Method
+                    && Request.Method != HttpMethod.Delete.Method
+                )
                 {
                     forwardRequest.Content = new ByteArrayContent(requestContent);
                     if (Request.ContentType != null)
                     {
-                        forwardRequest.Content.Headers.ContentType = new MediaTypeHeaderValue(Request.ContentType);
+                        forwardRequest.Content.Headers.ContentType = new MediaTypeHeaderValue(
+                            Request.ContentType
+                        );
                     }
                 }
 
                 foreach (var header in Request.Headers)
                 {
-                    forwardRequest.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
+                    forwardRequest.Headers.TryAddWithoutValidation(
+                        header.Key,
+                        header.Value.ToArray()
+                    );
                 }
 
                 HttpResponseMessage forwardResponse = await client.SendAsync(forwardRequest);
@@ -191,7 +222,11 @@ namespace Gateway.Controllers
 
                 Response.StatusCode = (int)forwardResponse.StatusCode;
                 var responseContent = await forwardResponse.Content.ReadAsByteArrayAsync();
-                return File(responseContent, forwardResponse.Content.Headers.ContentType?.ToString() ?? "application/octet-stream");
+                return File(
+                    responseContent,
+                    forwardResponse.Content.Headers.ContentType?.ToString()
+                        ?? "application/octet-stream"
+                );
             }
             catch (Exception)
             {
@@ -228,7 +263,7 @@ namespace Gateway.Controllers
                 instanceCbState.LastStateChangedTime = DateTime.UtcNow;
 
                 SetCircuitBreakerState(instanceAddress, instanceCbState);
-            }            
+            }
         }
 
         private CircuitBreakerState GetCircuitBreakerState(string instanceAddress)
@@ -269,7 +304,7 @@ namespace Gateway.Controllers
         {
             Closed,
             Open,
-            HalfOpen
+            HalfOpen,
         }
 
         public class ServiceEntry

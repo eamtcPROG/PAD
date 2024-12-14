@@ -132,6 +132,71 @@ app.get("/status", async (req, res) => {
   res.json({ status: "User service is up and running!" });
 });
 
+const increaseOrderOfUser = async (req, res, next) => {
+  const { id } = req.body;
+  const parsedId = parseInt(id.toString());
+  try {
+    const user = await User.findByPk(parsedId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    const orderNumber = user.ordernumber || 0;
+    user.ordernumber = parseInt(orderNumber.toString()) + 1;
+    await user.save();
+
+    // await User.update({ ordernumber: orderNumber + 1 }, { where: { id: parsedId } });
+    
+
+    await redisClient.del("users"); // Remove cached list of users
+    await redisClient.setEx(
+      `user:${user.id}`,
+      3600,
+      JSON.stringify({ id: user.id, email: user.email, ordernumber:user.ordernumber })
+    );
+    logger.log(`Order number increased for user ${id}`);
+    res.status(200).json({ message: "Order added to user.", user: user });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const decreaseOrderOfUser = async (req, res, next) => {
+  const { id } = req.body;
+
+  const parsedId = parseInt(id.toString());
+  try {
+    const user = await User.findByPk(parsedId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    const orderNumber = user.ordernumber || 1;
+    user.ordernumber = parseInt(orderNumber.toString()) - 1;
+    await user.save();
+
+    // await User.update({ ordernumber: orderNumber - 1 }, { where: { id: parsedId } });
+    
+
+    await redisClient.del("users"); // Remove cached list of users
+    await redisClient.setEx(
+      `user:${user.id}`,
+      3600,
+      JSON.stringify({ id: user.id, email: user.email, ordernumber:user.ordernumber }) // Store only necessary fields
+    );
+    logger.log(`Order number decreased for user ${id}`);
+    res.status(200).json({ message: "Order removed from user.", user: user });
+  }
+  catch (err) {
+    next(err);
+  }
+}
+
+app.post("/user/increase-for-saga", increaseOrderOfUser);
+app.post("/user/decrease-for-saga", decreaseOrderOfUser);
+
 // Create a New User
 app.post("/user", async (req, res, next) => {
   try {
@@ -262,7 +327,7 @@ app.get("/user", async (req, res, next) => {
     } else {
       // Fetch All Users from Database
       const users = await User.findAll({
-        attributes: ["id", "email"], // Select only necessary fields
+        attributes: ["id", "email", "ordernumber"], // Select only necessary fields
       });
 
       // Cache the Users Data
@@ -354,7 +419,7 @@ const registerService = async () => {
   );
   try {
     // const response = await httpClient(config);
-const response = await axios.post(`${SERVICE_DISCOVERY_URL}/register`, {
+    const response = await axios.post(`${SERVICE_DISCOVERY_URL}/register`, {
       ServiceName: SERVICE_NAME,
       Address: SERVICE_ADDRESS,
     });

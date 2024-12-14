@@ -136,6 +136,40 @@ app.get("/status", async (req, res) => {
   res.json({ status: "Ticket Order service is up and running!" });
 });
 
+const addOrderSaga = async (req, res, next) => {
+  const orderData = req.body;
+  try {
+    const newOrder = new Order(orderData);
+    await newOrder.save();
+
+    // Invalidate the cache
+    await redisClient.del("orders"); // Remove cached list of orders
+    await redisClient.set(
+      `order:${newOrder._id}`,
+      JSON.stringify(newOrder.toObject()) // Convert to plain object
+    ); // Cache the new order
+    console.log("Order added")
+    res.status(201).json(newOrder);
+  } catch (err) {
+    next(err); // Correct variable name
+  }
+}
+
+const deleteOrderSaga = async (req, res, next) => {
+  const { id } = req.body;
+  try {
+    await Order.findByIdAndDelete(id);
+    await redisClient.del("orders"); // Remove cached list of orders
+    await redisClient.del(`order:${id}`); // Remove cached order
+    res.status(200).json({ message: "Order deleted" });
+  } catch (err) {
+    next(err);
+  }
+}
+
+app.post("/order-saga", addOrderSaga);
+app.post("/delete-order-saga", deleteOrderSaga);
+
 // Add Order
 app.post("/order", async (req, res, next) => {
   const orderData = req.body;

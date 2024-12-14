@@ -18,6 +18,10 @@ const User = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
     },
+    ordernumber: {
+      type: DataTypes.NUMBER,
+      allowNull: true,
+    },
   },
   {
     freezeTableName: true,
