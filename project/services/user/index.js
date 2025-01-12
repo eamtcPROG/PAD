@@ -25,11 +25,11 @@ const SERVICE_ADDRESS =
   `${process.env.SERVICE_ADDRESS}:${SERVICE_PORT}` ||
   `http://user:${SERVICE_PORT}`;
 
-// Initialize Express App
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ port: 4005 });
-// Apply Global Middlewares
+
 app.use(bodyParser.json());
 app.use(cors());
 
@@ -50,12 +50,12 @@ redisClient.connect().catch((err) => {
   logger.error("Error connecting to Redis:", err);
 });
 
-// Handle Redis Client Shutdown Gracefully
+
 process.on("SIGINT", () => {
   redisClient.quit();
 });
 
-// Synchronize Sequelize Models with PostgreSQL
+
 sequelize
   .sync({ alter: true })
   .then(() => {
@@ -65,13 +65,13 @@ sequelize
     logger.error("Unable to connect to the database:", err);
   });
 
-// Configuration Constants
+
 const MAX_CONCURRENT_TASKS = 10;
-const TASK_TIMEOUT = 9000; // 5 seconds
+const TASK_TIMEOUT = 9000; 
 
 let currentTaskCount = 0;
 
-// Task Manager Middleware
+
 const taskManagerMiddleware = (req, res, next) => {
   if (currentTaskCount >= MAX_CONCURRENT_TASKS) {
     return res
@@ -149,7 +149,7 @@ const increaseOrderOfUser = async (req, res, next) => {
     // await User.update({ ordernumber: orderNumber + 1 }, { where: { id: parsedId } });
     
 
-    await redisClient.del("users"); // Remove cached list of users
+    await redisClient.del("users"); 
     await redisClient.setEx(
       `user:${user.id}`,
       3600,
@@ -180,11 +180,11 @@ const decreaseOrderOfUser = async (req, res, next) => {
     // await User.update({ ordernumber: orderNumber - 1 }, { where: { id: parsedId } });
     
 
-    await redisClient.del("users"); // Remove cached list of users
+    await redisClient.del("users"); 
     await redisClient.setEx(
       `user:${user.id}`,
       3600,
-      JSON.stringify({ id: user.id, email: user.email, ordernumber:user.ordernumber }) // Store only necessary fields
+      JSON.stringify({ id: user.id, email: user.email, ordernumber:user.ordernumber }) 
     );
     logger.log(`Order number decreased for user ${id}`);
     res.status(200).json({ message: "Order removed from user.", user: user });
@@ -197,22 +197,22 @@ const decreaseOrderOfUser = async (req, res, next) => {
 app.post("/user/increase-for-saga", increaseOrderOfUser);
 app.post("/user/decrease-for-saga", decreaseOrderOfUser);
 
-// Create a New User
+
 app.post("/user", async (req, res, next) => {
   try {
     const user = await User.create(req.body);
 
-    // Invalidate and Update Redis Cache
-    await redisClient.del("users"); // Remove cached list of users
+    
+    await redisClient.del("users"); 
     await redisClient.setEx(
       `user:${user.id}`,
       3600,
-      JSON.stringify({ id: user.id, email: user.email }) // Store only necessary fields
-    ); // Cache the new user
+      JSON.stringify({ id: user.id, email: user.email }) 
+    ); 
 
     res.status(201).json({ id: user.id, email: user.email });
   } catch (err) {
-    next(err); // Pass errors to the error-handling middleware
+    next(err); 
   }
 });
 
